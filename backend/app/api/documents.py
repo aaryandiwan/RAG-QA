@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
 
+import anyio
 from app.core.config import settings
 from app.models.schemas import DocumentUploadResponse
 from app.services.rag_service import get_rag_service
@@ -57,9 +58,9 @@ async def upload_document(file: UploadFile = File(...)):
         if not documents:
             raise HTTPException(status_code=422, detail="Could not extract text from document.")
 
-        # Index into Pinecone
+        # Index into Pinecone (in threadpool so event loop is not blocked)
         service = get_rag_service()
-        num_chunks = service.index_document(documents, document_id)
+        num_chunks = await anyio.to_thread.run_sync(service.index_document, documents, document_id)
 
         # Store metadata
         documents_store[document_id] = {

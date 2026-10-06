@@ -1,9 +1,10 @@
 import logging
 import uuid
+import time
 from typing import List, Optional, Any
 
+import google.generativeai as genai
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.schema import Document
 from pinecone import Pinecone, ServerlessSpec
 
@@ -16,9 +17,9 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """
     Core RAG service handling:
-    - Document chunking and embedding
-    - Pinecone vector store indexing (via native client)
-    - Retrieval and Gemini answer generation with source citations
+    - Document chunking and embedding (via Gemini models/gemini-embedding-001)
+    - Pinecone vector store indexing (via native client, 3072 dims)
+    - Retrieval and Gemini answer generation (via models/gemini-3.8-flash)
     """
 
     def __init__(self):
@@ -31,18 +32,9 @@ class RAGService:
                 "PINECONE_API_KEY is not set. Please add it to your .env file."
             )
 
-        # Initialise embeddings
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model=settings.GEMINI_EMBEDDING_MODEL,
-            google_api_key=settings.GEMINI_API_KEY,
-        )
-
-        # Initialise LLM
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.GEMINI_MODEL,
-            temperature=0,
-            google_api_key=settings.GEMINI_API_KEY,
-        )
+        # Initialise Google Generative AI with REST transport
+        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
         # Initialise Pinecone
         logger.info(f"Connecting to Pinecone index: {settings.PINECONE_INDEX}")
@@ -79,6 +71,8 @@ class RAGService:
                 spec=ServerlessSpec(cloud="aws", region=settings.PINECONE_ENV),
             )
             logger.info(f"Created Pinecone index: {settings.PINECONE_INDEX}")
+            while not self.pc.describe_index(settings.PINECONE_INDEX).status['ready']:
+                time.sleep(1)
         else:
             # Check dimension of existing index
             index_desc = self.pc.describe_index(settings.PINECONE_INDEX)
@@ -92,6 +86,14 @@ class RAGService:
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
+    def _embed_text(self, text: str) -> List[float]:
+        """Embed a single string using Gemini embedding model."""
+        res = genai.embed_content(
+            model=settings.GEMINI_EMBEDDING_MODEL,
+            content=text,
+        )
+        return res["embedding"]
+
     def index_document(self, documents: List[Document], document_id: str) -> int:
         """
         Chunk documents and store embeddings in Pinecone using native client.
@@ -100,18 +102,10 @@ class RAGService:
         chunks = self.text_splitter.split_documents(documents)
 
         # Prepare vectors for upsert
-        texts = [chunk.page_content for chunk in chunks]
-
-        # Batch embed for efficiency
-        try:
-            embeddings = self.embeddings.embed_documents(texts)
-        except Exception as e:
-            logger.error(f"Embedding failed: {e}")
-            raise
-
         vectors = []
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        for i, chunk in enumerate(chunks):
             chunk_id = f"{document_id}#{i}"
+            embedding = self._embed_text(chunk.page_content)
             metadata = chunk.metadata.copy()
             metadata["text"] = chunk.page_content
             metadata["document_id"] = document_id
@@ -148,7 +142,7 @@ class RAGService:
         Answer a question using RAG with direct retrieval + prompt approach.
         """
         # 1. Embed the query
-        query_vector = self.embeddings.embed_query(question)
+        query_vector = self._embed_text(question)
 
         # 2. Build optional document filter
         search_filter = None
@@ -201,8 +195,8 @@ class RAGService:
         prompt = self._build_prompt(question, context, history_str)
 
         # 8. Call Gemini
-        response = self.llm.invoke(prompt)
-        answer = response.content
+        response = self.model.generate_content(prompt)
+        answer = response.text
 
         # 9. Build source chunks for response
         sources = []

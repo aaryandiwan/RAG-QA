@@ -5,8 +5,8 @@ from typing import List, Optional
 class Settings(BaseSettings):
     # Gemini
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
-    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GEMINI_MODEL: str = "models/gemini-3.5-flash-lite"
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Pinecone
     PINECONE_API_KEY: str = ""
@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 50
     TOP_K_RESULTS: int = 5
 
-    # Embedding dimension (text-embedding-004 = 768)
-    EMBEDDING_DIMENSION: int = 768
+    # Embedding dimension (gemini-embedding-001 = 3072)
+    EMBEDDING_DIMENSION: int = 3072
 
     # File upload
     MAX_FILE_SIZE_MB: int = 20

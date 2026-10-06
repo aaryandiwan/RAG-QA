@@ -1,4 +1,5 @@
 import logging
+import anyio
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import QueryRequest, QueryResponse
 from app.services.rag_service import get_rag_service
@@ -21,11 +22,12 @@ async def query_documents(request: QueryRequest):
 
     try:
         service = get_rag_service()
-        response = service.query(
-            question=request.question,
-            document_ids=request.document_ids,
-            conversation_history=request.conversation_history,
-            top_k=request.top_k,
+        response = await anyio.to_thread.run_sync(
+            service.query,
+            request.question,
+            request.document_ids,
+            request.conversation_history,
+            request.top_k,
         )
         return response
     except HTTPException:
