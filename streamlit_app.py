@@ -32,34 +32,20 @@ st.markdown("""
         font-size: 1rem;
         margin-bottom: 1.5rem;
     }
-    .source-box {
-        background-color: #FFFBEB;
-        border: 1px solid #FDE68A;
-        border-radius: 8px;
-        padding: 10px;
-        margin-top: 8px;
-        font-size: 0.85rem;
+    .key-card {
+        background-color: #FFF7ED;
+        border: 1px solid #FFEDD5;
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Handle API keys from Streamlit Cloud Secrets or os.environ
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
-    if "PINECONE_API_KEY" in st.secrets:
-        os.environ["PINECONE_API_KEY"] = st.secrets["PINECONE_API_KEY"]
-    if "PINECONE_ENV" in st.secrets:
-        os.environ["PINECONE_ENV"] = st.secrets["PINECONE_ENV"]
-    if "PINECONE_INDEX" in st.secrets:
-        os.environ["PINECONE_INDEX"] = st.secrets["PINECONE_INDEX"]
-except Exception:
-    pass
-
 # Load backend imports
 try:
     from app.core.config import settings
-    from app.services.rag_service import get_rag_service
+    from app.services.rag_service import RAGService
     from app.utils.document_parser import parse_document
 except Exception as e:
     st.error(f"Error loading RAG backend: {e}")
@@ -70,44 +56,87 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "indexed_docs" not in st.session_state:
     st.session_state.indexed_docs = {}  # {doc_id: {"filename": ..., "chunks": ...}}
+if "rag_service" not in st.session_state:
+    st.session_state.rag_service = None
 
-# ── Sidebar ──────────────────────────────────────────────────────────
+# ── Sidebar: Bring Your Own Key (BYOK) ────────────────────────────────
 with st.sidebar:
-    st.title("⚙️ Configuration & Upload")
+    st.title("⚙️ Setup & Upload")
     
-    # API Keys Configuration fallback
-    with st.expander("🔑 API Key Settings", expanded=not bool(settings.GEMINI_API_KEY and settings.PINECONE_API_KEY)):
-        gemini_input = st.text_input(
-            "Gemini API Key",
-            value=settings.GEMINI_API_KEY,
-            type="password",
-            help="Get your free key from aistudio.google.com"
+    st.subheader("🔑 Your API Keys")
+    st.caption("Enter your personal keys to use the app. Your keys are private to your session and never stored.")
+
+    gemini_key = st.text_input(
+        "Google Gemini API Key",
+        value=st.session_state.get("user_gemini_key", ""),
+        type="password",
+        placeholder="AIzaSy...",
+        help="Free key from Google AI Studio",
+    )
+    
+    pinecone_key = st.text_input(
+        "Pinecone API Key",
+        value=st.session_state.get("user_pinecone_key", ""),
+        type="password",
+        placeholder="pcsk_...",
+        help="Free key from Pinecone.io",
+    )
+
+    with st.expander("🛠️ Advanced Settings (Optional)"):
+        pinecone_index = st.text_input(
+            "Pinecone Index Name",
+            value=st.session_state.get("user_pinecone_index", "rag-qa-index"),
+            help="Name of your Pinecone index"
         )
-        pinecone_input = st.text_input(
-            "Pinecone API Key",
-            value=settings.PINECONE_API_KEY,
-            type="password",
-            help="Get your key from app.pinecone.io"
+        pinecone_env = st.text_input(
+            "Pinecone Cloud Region",
+            value=st.session_state.get("user_pinecone_env", "us-east-1"),
+            help="Pinecone serverless region"
         )
-        if gemini_input:
-            settings.GEMINI_API_KEY = gemini_input
-            os.environ["GEMINI_API_KEY"] = gemini_input
-        if pinecone_input:
-            settings.PINECONE_API_KEY = pinecone_input
-            os.environ["PINECONE_API_KEY"] = pinecone_input
+
+    # Save to session state
+    st.session_state["user_gemini_key"] = gemini_key.strip()
+    st.session_state["user_pinecone_key"] = pinecone_key.strip()
+    st.session_state["user_pinecone_index"] = pinecone_index.strip()
+    st.session_state["user_pinecone_env"] = pinecone_env.strip()
+
+    keys_ready = bool(st.session_state["user_gemini_key"] and st.session_state["user_pinecone_key"])
+
+    if not keys_ready:
+        st.markdown("""
+        <div style="font-size:0.8rem; color:#78716C; margin-top:6px;">
+            Need keys? Get them free here:<br/>
+            • <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio (Gemini)</a><br/>
+            • <a href="https://app.pinecone.io/" target="_blank">Pinecone Console</a>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.success("✓ API Keys configured for this session!")
 
     st.markdown("---")
     st.subheader("📄 Upload Document")
     uploaded_file = st.file_uploader(
         "Upload PDF, DOCX, TXT, or MD",
         type=["pdf", "docx", "txt", "md"],
-        help="Max file size 20MB"
+        help="Max file size 20MB",
+        disabled=not keys_ready,
     )
 
-    if uploaded_file is not None:
+    def get_user_rag_service():
+        """Get or initialize RAG service with the current user's personal keys."""
+        if st.session_state.rag_service is None:
+            st.session_state.rag_service = RAGService(
+                gemini_api_key=st.session_state["user_gemini_key"],
+                pinecone_api_key=st.session_state["user_pinecone_key"],
+                pinecone_index=st.session_state.get("user_pinecone_index", "rag-qa-index"),
+                pinecone_env=st.session_state.get("user_pinecone_env", "us-east-1"),
+            )
+        return st.session_state.rag_service
+
+    if uploaded_file is not None and keys_ready:
         file_key = f"uploaded_{uploaded_file.name}_{uploaded_file.size}"
         if file_key not in st.session_state:
-            with st.spinner(f"Processing and indexing '{uploaded_file.name}'..."):
+            with st.spinner(f"Processing and indexing '{uploaded_file.name}' with your keys..."):
                 try:
                     ext = uploaded_file.name.split(".")[-1].lower()
                     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp_file:
@@ -120,10 +149,10 @@ with st.sidebar:
                         if not parsed_docs:
                             st.error("Could not extract text from document.")
                         else:
-                            # Index document into Pinecone
-                            rag_service = get_rag_service()
+                            # Index document into user's Pinecone
+                            service = get_user_rag_service()
                             doc_id = str(uuid.uuid4())
-                            num_chunks = rag_service.index_document(parsed_docs, doc_id)
+                            num_chunks = service.index_document(parsed_docs, doc_id)
                             
                             st.session_state.indexed_docs[doc_id] = {
                                 "filename": uploaded_file.name,
@@ -148,14 +177,14 @@ with st.sidebar:
             with col2:
                 if st.button("🗑️", key=f"del_{doc_id}", help=f"Delete {info['filename']}"):
                     try:
-                        rag_service = get_rag_service()
-                        rag_service.delete_document(doc_id)
+                        service = get_user_rag_service()
+                        service.delete_document(doc_id)
                         del st.session_state.indexed_docs[doc_id]
                         st.rerun()
                     except Exception as e:
                         st.error(f"Delete error: {e}")
     else:
-        st.info("No documents indexed yet. Upload one above!")
+        st.info("No documents indexed yet. Enter keys and upload above!")
 
     if st.button("🧹 Clear Chat History"):
         st.session_state.messages = []
@@ -164,6 +193,10 @@ with st.sidebar:
 # ── Main Chat Area ──────────────────────────────────────────────────
 st.markdown('<div class="main-title">DocChat 🧠📄</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Intelligent RAG Document Question Answering powered by Google Gemini & Pinecone</div>', unsafe_allow_html=True)
+
+# If keys are missing, show prominent callout
+if not keys_ready:
+    st.info("👈 **Welcome to DocChat!** To get started, please enter your **Gemini API Key** and **Pinecone API Key** in the sidebar. Your keys are private to your session and never stored.")
 
 # Display Chat Messages
 for msg in st.session_state.messages:
@@ -178,11 +211,10 @@ for msg in st.session_state.messages:
                     st.markdown("---")
 
 # User Input
-if prompt := st.chat_input("Ask a question about your uploaded documents..."):
+chat_placeholder = "Ask a question about your uploaded documents..." if keys_ready else "Please enter your API keys in the sidebar first..."
+if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
     if not st.session_state.indexed_docs:
         st.warning("⚠️ Please upload and index at least one document from the sidebar first!")
-    elif not (settings.GEMINI_API_KEY and settings.PINECONE_API_KEY):
-        st.error("⚠️ API keys are missing. Please provide Gemini & Pinecone API keys in the sidebar.")
     else:
         # Append User Message
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -193,7 +225,7 @@ if prompt := st.chat_input("Ask a question about your uploaded documents..."):
         with st.chat_message("assistant"):
             with st.spinner("Searching document vectors & reasoning..."):
                 try:
-                    rag_service = get_rag_service()
+                    service = get_user_rag_service()
                     
                     # Convert conversation history
                     history = []
@@ -205,7 +237,7 @@ if prompt := st.chat_input("Ask a question about your uploaded documents..."):
                             })
                     
                     doc_ids = list(st.session_state.indexed_docs.keys())
-                    result = rag_service.query(
+                    result = service.query(
                         question=prompt,
                         document_ids=doc_ids,
                         conversation_history=history,

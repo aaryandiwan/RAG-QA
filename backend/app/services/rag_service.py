@@ -30,30 +30,41 @@ class RAGService:
     - Retrieval and Gemini answer generation (via models/gemini-3.8-flash)
     """
 
-    def __init__(self):
-        if not settings.GEMINI_API_KEY:
+    def __init__(
+        self,
+        gemini_api_key: Optional[str] = None,
+        pinecone_api_key: Optional[str] = None,
+        pinecone_index: Optional[str] = None,
+        pinecone_env: Optional[str] = None,
+    ):
+        self.gemini_api_key = gemini_api_key or settings.GEMINI_API_KEY
+        self.pinecone_api_key = pinecone_api_key or settings.PINECONE_API_KEY
+        self.pinecone_index = pinecone_index or settings.PINECONE_INDEX
+        self.pinecone_env = pinecone_env or settings.PINECONE_ENV
+
+        if not self.gemini_api_key:
             raise RuntimeError(
-                "GEMINI_API_KEY is not set. Please add it to your .env file."
+                "GEMINI_API_KEY is not set. Please provide your Gemini API key."
             )
-        if not settings.PINECONE_API_KEY:
+        if not self.pinecone_api_key:
             raise RuntimeError(
-                "PINECONE_API_KEY is not set. Please add it to your .env file."
+                "PINECONE_API_KEY is not set. Please provide your Pinecone API key."
             )
 
         # Initialise Google Generative AI with REST transport
-        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+        genai.configure(api_key=self.gemini_api_key, transport="rest")
         self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
         # Initialise Pinecone
-        logger.info(f"Connecting to Pinecone index: {settings.PINECONE_INDEX}")
-        self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+        logger.info(f"Connecting to Pinecone index: {self.pinecone_index}")
+        self.pc = Pinecone(api_key=self.pinecone_api_key)
         self._ensure_index_exists()
-        self.index = self.pc.Index(settings.PINECONE_INDEX)
+        self.index = self.pc.Index(self.pinecone_index)
 
         # Verify dimension
-        index_desc = self.pc.describe_index(settings.PINECONE_INDEX)
+        index_desc = self.pc.describe_index(self.pinecone_index)
         logger.info(
-            f"Connected to index '{settings.PINECONE_INDEX}' "
+            f"Connected to index '{self.pinecone_index}' "
             f"with dimension {index_desc.dimension}"
         )
 
@@ -71,25 +82,25 @@ class RAGService:
         existing_indexes = self.pc.list_indexes()
         existing_names = [i.name for i in existing_indexes]
 
-        if settings.PINECONE_INDEX not in existing_names:
+        if self.pinecone_index not in existing_names:
             self.pc.create_index(
-                name=settings.PINECONE_INDEX,
+                name=self.pinecone_index,
                 dimension=settings.EMBEDDING_DIMENSION,
                 metric="cosine",
-                spec=ServerlessSpec(cloud="aws", region=settings.PINECONE_ENV),
+                spec=ServerlessSpec(cloud="aws", region=self.pinecone_env),
             )
-            logger.info(f"Created Pinecone index: {settings.PINECONE_INDEX}")
-            while not self.pc.describe_index(settings.PINECONE_INDEX).status['ready']:
+            logger.info(f"Created Pinecone index: {self.pinecone_index}")
+            while not self.pc.describe_index(self.pinecone_index).status['ready']:
                 time.sleep(1)
         else:
             # Check dimension of existing index
-            index_desc = self.pc.describe_index(settings.PINECONE_INDEX)
+            index_desc = self.pc.describe_index(self.pinecone_index)
             if index_desc.dimension != settings.EMBEDDING_DIMENSION:
                 error_msg = (
-                    f"CRITICAL: Index '{settings.PINECONE_INDEX}' has dimension "
+                    f"CRITICAL: Index '{self.pinecone_index}' has dimension "
                     f"{index_desc.dimension}, but embedding model requires "
                     f"{settings.EMBEDDING_DIMENSION}. Please delete the index in "
-                    f"the Pinecone console or change PINECONE_INDEX in your .env."
+                    f"the Pinecone console or change PINECONE_INDEX."
                 )
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
