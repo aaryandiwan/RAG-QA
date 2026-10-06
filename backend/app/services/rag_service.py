@@ -4,8 +4,16 @@ import time
 from typing import List, Optional, Any
 
 import google.generativeai as genai
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    from langchain.schema import Document
+
 from pinecone import Pinecone, ServerlessSpec
 
 from app.core.config import settings
