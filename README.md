@@ -1,97 +1,185 @@
-# RAG- (Q&A)🧠📄
+# DocChat — RAG Document Q&A 🧠📄
 
-A professional-grade Retrieval-Augmented Generation (RAG) application that allows users to upload documents and have intelligent, context-aware conversations with them. Powered by **Google Gemini** for reasoning and **Pinecone** for high-performance vector retrieval.
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rag-application26.streamlit.app)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
+[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-3.5%20Flash%20Lite-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev/)
+[![Pinecone](https://img.shields.io/badge/Pinecone-Serverless%20(3072d)-000000.svg?logo=pinecone&logoColor=white)](https://www.pinecone.io/)
 
-## ✨ Features
-
-- **Multi-Format Support**: Seamlessly process PDF, DOCX, TXT, and Markdown files.
-- **Intelligent RAG**: Uses `gemini-flash-latest` for lightning-fast, high-quality responses.
-- **Source Citations**: Every answer includes direct references to the source document chunks, ensuring transparency and accuracy.
-- **Contextual Memory**: Remembers your conversation history for natural, multi-turn interactions.
-- **Modern UI**: A sleek, responsive interface built with React and Tailwind CSS, featuring glassmorphism and smooth animations.
-- **Native Vector Integration**: Direct integration with Pinecone's native Python client for optimal performance.
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Framework**: React 18 (Vite)
-- **Styling**: Tailwind CSS
-- **Icons**: Lucide React
-- **Markdown**: React Markdown
-- **API Client**: Axios
-
-### Backend
-- **Framework**: FastAPI (Python 3.12)
-- **Orchestration**: LangChain
-- **LLM**: Google Gemini 1.5 Flash
-- **Embeddings**: Google Gemini Embedding (3072 dimensions)
-- **Vector DB**: Pinecone (Serverless)
-- **OCR/Parsing**: PyPDF, Unstructured, Python-Docx
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Python 3.12+
-- Node.js 18+
-- [Google AI Studio API Key](https://aistudio.google.com/app/apikey)
-- [Pinecone API Key](https://www.pinecone.io/)
-
-### Local Setup
-
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/yourusername/rag-qa-project.git
-   cd rag-qa-project
-   ```
-
-2. **Backend Configuration**
-   ```bash
-   cd backend
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-   Create a `.env` file in the `backend` folder:
-   ```env
-   GEMINI_API_KEY=your_gemini_key
-   PINECONE_API_KEY=your_pinecone_key
-   PINECONE_ENV=us-east-1
-   PINECONE_INDEX=rag-qa-index-v1-3072
-   ```
-
-3. **Frontend Configuration**
-   ```bash
-   cd ../frontend
-   npm install
-   ```
-   Create a `.env` file in the `frontend` folder:
-   ```env
-   VITE_API_URL=http://localhost:8082
-   ```
-
-4. **Run Locally**
-   - **Backend**: `uvicorn main:app --reload --port 8082`
-   - **Frontend**: `npm run dev`
+A production-ready **Retrieval-Augmented Generation (RAG)** system allowing users to upload documents (PDF, DOCX, TXT, MD) and hold intelligent, context-grounded conversations with transparent source citations.
 
 ---
 
-## 🌍 Deployment Guide
+## 🌐 Live Demos & Access
 
-### Backend: Railway.app
+| Platform | Link | Description |
+| :--- | :--- | :--- |
+| ☁️ **Streamlit Cloud** | [**rag-application26.streamlit.app**](https://rag-application26.streamlit.app) | **24/7 Live Public Web App** (Zero installation required) |
+| 💻 **Localhost (Full-Stack)** | [**http://localhost:5173**](http://localhost:5173) | **React + Tailwind UI** running on local FastAPI backend (`:8082`) |
 
-1. **Create New Project**: Select "Deploy from GitHub repo".
-2. **Root Directory**: Set "Root Directory" to `backend`.
-3. **Environment Variables**: Add all keys from your backend `.env`.
-4. **Python Version**: Ensure Railway uses Python 3.12 by adding a `runtime.txt` with `python-3.12.3` or setting a variable.
-5. **Port**: Railway automatically detects the port, but ensure `VITE_API_URL` on frontend matches the generated Railway URL.
+---
 
-### Frontend: Vercel
+## ✨ Features
 
-1. **Import Repository**: Connect your GitHub repo.
-2. **Framework Preset**: Vite.
-3. **Root Directory**: `frontend`.
-4. **Environment Variables**: Add `VITE_API_URL` pointing to your deployed Railway backend (e.g., `https://your-backend.railway.app`).
-5. **Build & Deploy**: Vercel will handle the rest!
+- 📑 **Multi-Format Parsing**: Ingest `.pdf`, `.docx`, `.txt`, and `.md` files seamlessly.
+- ⚡ **Ultra-Fast Generation**: Powered by **Google Gemini 3.5 Flash Lite** via high-throughput REST transport (~2s latency).
+- 🌲 **High-Dimensional Vector Search**: **Pinecone Serverless** vector database indexing with **3072-dimensional** embeddings (`models/gemini-embedding-001`).
+- 🎯 **Verifiable Source Citations**: Every generated answer references the exact source document, page number, and text chunk.
+- 💬 **Multi-Turn Conversation Memory**: Retains conversational context across multi-turn interactions.
+- 🛡️ **Non-Blocking Architecture**: Blocking vector and model I/O offloaded to worker threadpools (`anyio`) to keep the async event loop responsive.
+- 🚀 **Dual Frontends**: Choose between a full-stack **React + Tailwind** web application or a single-click **Streamlit Cloud** interface.
+
+---
+
+## 🛠️ Tech Stack
+
+```mermaid
+graph LR
+    subgraph UI ["Frontends"]
+        React["React 18 + Tailwind CSS<br/>(localhost:5173 / Vercel)"]
+        Streamlit["Streamlit Cloud<br/>(rag-application26.streamlit.app)"]
+    end
+
+    subgraph Core ["Backend & RAG Pipeline"]
+        FastAPI["FastAPI (Python 3.12)"]
+        Parser["Document Parsers<br/>(PyPDF, python-docx)"]
+        RAG["RAG Service<br/>(Lazy Singleton)"]
+    end
+
+    subgraph Cloud ["External AI Services"]
+        GeminiEmb["Gemini Embedding 001<br/>(3072 Dimensions)"]
+        Pinecone["Pinecone Vector DB<br/>(Serverless AWS us-east-1)"]
+        GeminiLLM["Gemini 3.5 Flash Lite<br/>(REST Generation)"]
+    end
+
+    React -->|REST API| FastAPI
+    Streamlit -->|Direct Python| RAG
+    FastAPI --> Parser
+    FastAPI --> RAG
+    RAG --> GeminiEmb
+    RAG --> Pinecone
+    RAG --> GeminiLLM
+```
+
+---
+
+## 🚀 Quickstart Guide
+
+### Option 1: 1-Click Launch (Windows Localhost)
+
+If you're on Windows, simply double-click the included batch launcher:
+```bash
+run_local.bat
+```
+This automatically starts both the FastAPI backend (`:8082`) and the React Vite frontend (`:5173`), and opens your browser.
+
+---
+
+### Option 2: Manual Localhost Setup
+
+#### 1. Backend Setup (FastAPI)
+```bash
+cd backend
+python -m venv .venv
+
+# Activate virtual environment
+# Windows:
+.venv\Scripts\activate
+# Mac/Linux:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+Create a `.env` file inside the `backend/` folder:
+```env
+GEMINI_API_KEY=your_gemini_api_key
+PINECONE_API_KEY=your_pinecone_api_key
+PINECONE_ENV=us-east-1
+PINECONE_INDEX=rag-qa-index
+```
+
+Start the backend:
+```bash
+uvicorn main:app --reload --port 8082
+```
+*API reference available at [http://localhost:8082/docs](http://localhost:8082/docs).*
+
+#### 2. Frontend Setup (React Vite)
+In a new terminal:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open **[http://localhost:5173](http://localhost:5173)** in your browser.
+
+---
+
+### Option 3: Run Streamlit Locally
+
+```bash
+streamlit run streamlit_app.py
+```
+Open **[http://localhost:8501](http://localhost:8501)** in your browser.
+
+---
+
+## ☁️ Cloud Deployment
+
+### 1. Streamlit Community Cloud (1-Click Deployment)
+1. Go to [share.streamlit.io](https://share.streamlit.io/) and connect your GitHub repo.
+2. Set **Main file path**: `streamlit_app.py`.
+3. In **Advanced Settings -> Secrets**, add:
+   ```toml
+   GEMINI_API_KEY = "your_gemini_key"
+   PINECONE_API_KEY = "your_pinecone_key"
+   PINECONE_ENV = "us-east-1"
+   PINECONE_INDEX = "rag-qa-index"
+   ```
+4. Click **Deploy**! Live at: `https://rag-application26.streamlit.app`.
+
+### 2. Vercel (Frontend) + Render (Backend)
+- **Backend on Render.com**:
+  - New Web Service -> Root Directory: `backend`
+  - Build Command: `pip install -r requirements.txt`
+  - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+  - Add Environment Variables from `.env`.
+- **Frontend on Vercel**:
+  - Import repo -> Set **Root Directory**: `frontend`.
+  - Add Environment Variable: `VITE_API_URL` pointing to your Render backend URL.
+
+---
+
+## 📡 API Endpoints (FastAPI)
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health/` | Service health status check |
+| `POST` | `/api/documents/upload` | Upload & index file (`multipart/form-data`) |
+| `GET` | `/api/documents/` | List all indexed documents in memory |
+| `DELETE` | `/api/documents/{id}` | Delete document and vector embeddings from Pinecone |
+| `POST` | `/api/query/` | Ask questions with optional doc filters and chat history |
+
+---
+
+## 🧪 Testing
+
+Run automated backend test suite:
+```bash
+cd backend
+pytest tests/ -v
+```
+
+All 5 core tests verify:
+- Health check endpoint
+- File validation & upload indexing
+- Unsupported format rejection
+- RAG question querying & response schema
+- Empty question validation
+
+---
 
 ## 📄 License
-MIT License. Free to use and modify for personal and commercial projects.
+MIT License. Free to use and customize for personal and commercial projects.
