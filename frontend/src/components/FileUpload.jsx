@@ -21,7 +21,9 @@ export default function FileUpload({ onUploadSuccess }) {
       onUploadSuccess(result);
     } catch (err) {
       setStatus("error");
-      setMessage(err.response?.data?.detail || "Upload failed. Please try again.");
+      const serverMessage = err.response?.data?.detail;
+      const networkMessage = err.message;
+      setMessage(serverMessage || networkMessage || "Upload failed. Please try again.");
     }
   }, [onUploadSuccess]);
 

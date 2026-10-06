@@ -78,9 +78,14 @@ async def upload_document(file: UploadFile = File(...)):
             message=f"Successfully indexed '{file.filename}' into {num_chunks} chunks.",
         )
 
+    except HTTPException:
+        raise
     except RuntimeError as e:
-        # Catch missing API key errors and return a clear message
+        logger.exception("RAG service unavailable during upload")
         raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Upload processing failed")
+        raise HTTPException(status_code=500, detail="Document processing or indexing failed.") from e
 
     finally:
         # Clean up temp file
@@ -100,8 +105,12 @@ async def delete_document(document_id: str):
     if document_id not in documents_store:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    service = get_rag_service()
-    service.delete_document(document_id)
+    try:
+        service = get_rag_service()
+        service.delete_document(document_id)
+    except RuntimeError as e:
+        logger.exception("RAG service unavailable during delete")
+        raise HTTPException(status_code=503, detail=str(e))
     del documents_store[document_id]
 
     return {"message": f"Document {document_id} deleted successfully."}

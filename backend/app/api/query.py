@@ -28,5 +28,11 @@ async def query_documents(request: QueryRequest):
             top_k=request.top_k,
         )
         return response
+    except HTTPException:
+        raise
     except RuntimeError as e:
+        logger.exception("RAG service unavailable during query")
         raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Query processing failed")
+        raise HTTPException(status_code=500, detail="Query processing failed.") from e
