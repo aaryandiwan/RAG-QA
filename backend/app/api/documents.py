@@ -1,5 +1,6 @@
 import os
 import uuid
+import tempfile
 import aiofiles
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -7,13 +8,13 @@ from typing import List
 
 from app.core.config import settings
 from app.models.schemas import DocumentUploadResponse
-from app.services.rag_service import rag_service
+from app.services.rag_service import get_rag_service
 from app.utils.document_parser import parse_document
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = "/tmp/rag_uploads"
+UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "rag_uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # In-memory store for demo (use a DB like PostgreSQL in production)
@@ -57,7 +58,8 @@ async def upload_document(file: UploadFile = File(...)):
             raise HTTPException(status_code=422, detail="Could not extract text from document.")
 
         # Index into Pinecone
-        num_chunks = rag_service.index_document(documents, document_id)
+        service = get_rag_service()
+        num_chunks = service.index_document(documents, document_id)
 
         # Store metadata
         documents_store[document_id] = {
@@ -75,6 +77,10 @@ async def upload_document(file: UploadFile = File(...)):
             num_chunks=num_chunks,
             message=f"Successfully indexed '{file.filename}' into {num_chunks} chunks.",
         )
+
+    except RuntimeError as e:
+        # Catch missing API key errors and return a clear message
+        raise HTTPException(status_code=503, detail=str(e))
 
     finally:
         # Clean up temp file
@@ -94,7 +100,8 @@ async def delete_document(document_id: str):
     if document_id not in documents_store:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    rag_service.delete_document(document_id)
+    service = get_rag_service()
+    service.delete_document(document_id)
     del documents_store[document_id]
 
     return {"message": f"Document {document_id} deleted successfully."}

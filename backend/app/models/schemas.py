@@ -34,6 +34,8 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     answer: str
     sources: List[SourceChunk]
     question: str

@@ -124,5 +124,5 @@ pnpm-debug.log*
 .vercel/
 coverage/
 dist/
-frontend/.env.example
-backend/.env.example
+# frontend/.env.example  — allow these in repo
+# backend/.env.example  — allow these in repo

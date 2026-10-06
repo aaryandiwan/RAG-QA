@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import QueryRequest, QueryResponse
-from app.services.rag_service import rag_service
+from app.services.rag_service import get_rag_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -19,11 +19,14 @@ async def query_documents(request: QueryRequest):
 
     logger.info(f"Query received: '{request.question[:80]}...'")
 
-    response = rag_service.query(
-        question=request.question,
-        document_ids=request.document_ids,
-        conversation_history=request.conversation_history,
-        top_k=request.top_k,
-    )
-
-    return response
+    try:
+        service = get_rag_service()
+        response = service.query(
+            question=request.question,
+            document_ids=request.document_ids,
+            conversation_history=request.conversation_history,
+            top_k=request.top_k,
+        )
+        return response
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))

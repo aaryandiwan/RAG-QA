@@ -1,22 +1,25 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
     # Gemini
-    GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-flash-latest"
-    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
 
     # Pinecone
-    PINECONE_API_KEY: str
+    PINECONE_API_KEY: str = ""
     PINECONE_ENV: str = "us-east-1"
-    PINECONE_INDEX: str = "rag-qa-index-v1-3072"
+    PINECONE_INDEX: str = "rag-qa-index"
 
     # Chunking
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
     TOP_K_RESULTS: int = 5
+
+    # Embedding dimension (text-embedding-004 = 768)
+    EMBEDDING_DIMENSION: int = 768
 
     # File upload
     MAX_FILE_SIZE_MB: int = 20

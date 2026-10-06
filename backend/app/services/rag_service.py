@@ -4,11 +4,8 @@ from typing import List, Optional, Any
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.schema import Document, BaseRetriever
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
+from langchain.schema import Document
 from pinecone import Pinecone, ServerlessSpec
-from pydantic import Field
 
 from app.core.config import settings
 from app.models.schemas import SourceChunk, QueryResponse
@@ -16,50 +13,24 @@ from app.models.schemas import SourceChunk, QueryResponse
 logger = logging.getLogger(__name__)
 
 
-class PineconeRetriever(BaseRetriever):
-    """
-    Custom LangChain retriever using the native Pinecone Python client.
-    """
-    index: Any = Field(exclude=True)
-    embeddings: GoogleGenerativeAIEmbeddings = Field(exclude=True)
-    top_k: int = 5
-    filter: Optional[dict] = None
-
-    def _get_relevant_documents(self, query: str) -> List[Document]:
-        # Embed the query
-        query_vector = self.embeddings.embed_query(query)
-
-        # Query Pinecone
-        results = self.index.query(
-            vector=query_vector,
-            top_k=self.top_k,
-            include_metadata=True,
-            filter=self.filter
-        )
-
-        # Convert to LangChain Documents
-        docs = []
-        for res in results["matches"]:
-            metadata = res["metadata"]
-            # Store score in metadata for later use
-            metadata["score"] = res["score"]
-            docs.append(Document(
-                page_content=metadata.pop("text", ""),
-                metadata=metadata
-            ))
-        return docs
-
-
 class RAGService:
     """
     Core RAG service handling:
     - Document chunking and embedding
     - Pinecone vector store indexing (via native client)
-    - Hybrid retrieval (dense vectors)
-    - Gemini answer generation with source citations
+    - Retrieval and Gemini answer generation with source citations
     """
 
     def __init__(self):
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not set. Please add it to your .env file."
+            )
+        if not settings.PINECONE_API_KEY:
+            raise RuntimeError(
+                "PINECONE_API_KEY is not set. Please add it to your .env file."
+            )
+
         # Initialise embeddings
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model=settings.GEMINI_EMBEDDING_MODEL,
@@ -78,10 +49,13 @@ class RAGService:
         self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
         self._ensure_index_exists()
         self.index = self.pc.Index(settings.PINECONE_INDEX)
-        
-        # Verify dimension again for extra safety
+
+        # Verify dimension
         index_desc = self.pc.describe_index(settings.PINECONE_INDEX)
-        logger.info(f"Connected to index '{settings.PINECONE_INDEX}' with dimension {index_desc.dimension}")
+        logger.info(
+            f"Connected to index '{settings.PINECONE_INDEX}' "
+            f"with dimension {index_desc.dimension}"
+        )
 
         # Text splitter for chunking
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -90,17 +64,17 @@ class RAGService:
             separators=["\n\n", "\n", ". ", " ", ""],
         )
 
-        logger.info("RAGService initialised successfully with native Pinecone client")
+        logger.info("RAGService initialised successfully")
 
     def _ensure_index_exists(self):
         """Create Pinecone index if it doesn't exist."""
         existing_indexes = self.pc.list_indexes()
         existing_names = [i.name for i in existing_indexes]
-        
+
         if settings.PINECONE_INDEX not in existing_names:
             self.pc.create_index(
                 name=settings.PINECONE_INDEX,
-                dimension=3072,   # gemini-embedding-001 dimension
+                dimension=settings.EMBEDDING_DIMENSION,
                 metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region=settings.PINECONE_ENV),
             )
@@ -108,11 +82,12 @@ class RAGService:
         else:
             # Check dimension of existing index
             index_desc = self.pc.describe_index(settings.PINECONE_INDEX)
-            if index_desc.dimension != 3072:
+            if index_desc.dimension != settings.EMBEDDING_DIMENSION:
                 error_msg = (
-                    f"CRITICAL: Index '{settings.PINECONE_INDEX}' has dimension {index_desc.dimension}, "
-                    f"but Gemini requires 3072. Please delete the index in the Pinecone console "
-                    f"or change the 'PINECONE_INDEX' name in your .env file."
+                    f"CRITICAL: Index '{settings.PINECONE_INDEX}' has dimension "
+                    f"{index_desc.dimension}, but embedding model requires "
+                    f"{settings.EMBEDDING_DIMENSION}. Please delete the index in "
+                    f"the Pinecone console or change PINECONE_INDEX in your .env."
                 )
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
@@ -125,16 +100,16 @@ class RAGService:
         chunks = self.text_splitter.split_documents(documents)
 
         # Prepare vectors for upsert
-        vectors = []
         texts = [chunk.page_content for chunk in chunks]
-        
+
         # Batch embed for efficiency
         try:
             embeddings = self.embeddings.embed_documents(texts)
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
-            raise e
+            raise
 
+        vectors = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             chunk_id = f"{document_id}#{i}"
             metadata = chunk.metadata.copy()
@@ -144,7 +119,7 @@ class RAGService:
             vectors.append({
                 "id": chunk_id,
                 "values": embedding,
-                "metadata": metadata
+                "metadata": metadata,
             })
 
         # Upsert in batches of 100
@@ -155,9 +130,11 @@ class RAGService:
                 self.index.upsert(vectors=batch)
         except Exception as e:
             logger.error(f"Pinecone upsert failed: {e}")
-            raise e
+            raise
 
-        logger.info(f"Indexed document {document_id}: {len(chunks)} chunks stored in Pinecone")
+        logger.info(
+            f"Indexed document {document_id}: {len(chunks)} chunks stored in Pinecone"
+        )
         return len(chunks)
 
     def query(
@@ -168,63 +145,118 @@ class RAGService:
         top_k: int = 5,
     ) -> QueryResponse:
         """
-        Answer a question using RAG and native Pinecone retrieval.
+        Answer a question using RAG with direct retrieval + prompt approach.
         """
-        # Build custom retriever with optional document filter
+        # 1. Embed the query
+        query_vector = self.embeddings.embed_query(question)
+
+        # 2. Build optional document filter
         search_filter = None
         if document_ids:
             search_filter = {"document_id": {"$in": document_ids}}
 
-        retriever = PineconeRetriever(
-            index=self.index,
-            embeddings=self.embeddings,
+        # 3. Query Pinecone
+        results = self.index.query(
+            vector=query_vector,
             top_k=top_k,
-            filter=search_filter
+            include_metadata=True,
+            filter=search_filter,
         )
 
-        # Build conversation memory from history
-        memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            output_key="answer",
-        )
+        # 4. Extract retrieved chunks
+        retrieved_docs = []
+        for match in results.get("matches", []):
+            metadata = match.get("metadata", {})
+            retrieved_docs.append({
+                "text": metadata.get("text", ""),
+                "filename": metadata.get("filename", ""),
+                "page": metadata.get("page"),
+                "document_id": metadata.get("document_id", ""),
+                "score": match.get("score", 0.0),
+            })
+
+        # 5. Build context string from retrieved chunks
+        context_parts = []
+        for i, doc in enumerate(retrieved_docs, 1):
+            page_info = f" (page {doc['page']})" if doc.get("page") else ""
+            context_parts.append(
+                f"[Source {i}: {doc['filename']}{page_info}]\n{doc['text']}"
+            )
+        context = "\n\n---\n\n".join(context_parts) if context_parts else "No relevant context found."
+
+        # 6. Build conversation history string
+        history_str = ""
         if conversation_history:
+            history_parts = []
             for turn in conversation_history:
-                memory.chat_memory.add_user_message(turn.get("human", ""))
-                memory.chat_memory.add_ai_message(turn.get("ai", ""))
+                human = turn.get("human", "")
+                ai = turn.get("ai", "")
+                if human:
+                    history_parts.append(f"User: {human}")
+                if ai:
+                    history_parts.append(f"Assistant: {ai}")
+            history_str = "\n".join(history_parts)
 
-        # Build RAG chain
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=self.llm,
-            retriever=retriever,
-            memory=memory,
-            return_source_documents=True,
-            verbose=False,
-        )
+        # 7. Build the prompt
+        prompt = self._build_prompt(question, context, history_str)
 
-        result = chain.invoke({"question": question})
+        # 8. Call Gemini
+        response = self.llm.invoke(prompt)
+        answer = response.content
 
-        # Parse source chunks
+        # 9. Build source chunks for response
         sources = []
         seen = set()
-        for doc in result.get("source_documents", []):
-            key = doc.page_content[:100]
+        for doc in retrieved_docs:
+            key = doc["text"][:100]
             if key not in seen:
                 seen.add(key)
+                content = doc["text"][:300]
+                if len(doc["text"]) > 300:
+                    content += "..."
                 sources.append(SourceChunk(
-                    content=doc.page_content[:300] + "...",
-                    page=doc.metadata.get("page"),
-                    document_id=doc.metadata.get("document_id", ""),
-                    filename=doc.metadata.get("filename", ""),
-                    score=doc.metadata.get("score", 0.0),
+                    content=content,
+                    page=doc.get("page"),
+                    document_id=doc.get("document_id", ""),
+                    filename=doc.get("filename", ""),
+                    score=doc.get("score", 0.0),
                 ))
 
         return QueryResponse(
-            answer=result["answer"],
+            answer=answer,
             sources=sources,
             question=question,
             model_used=settings.GEMINI_MODEL,
         )
+
+    def _build_prompt(self, question: str, context: str, history: str) -> str:
+        """Build the RAG prompt for Gemini."""
+        parts = [
+            "You are a helpful document Q&A assistant. Answer the user's question "
+            "based ONLY on the provided document context below. If the context does "
+            "not contain enough information to answer, say so clearly. Always cite "
+            "which source(s) you used.",
+            "",
+            "## Document Context",
+            context,
+        ]
+
+        if history:
+            parts.extend([
+                "",
+                "## Conversation History",
+                history,
+            ])
+
+        parts.extend([
+            "",
+            "## Current Question",
+            question,
+            "",
+            "## Your Answer",
+        ])
+
+        return "\n".join(parts)
 
     def delete_document(self, document_id: str):
         """Delete all chunks for a document from Pinecone."""
@@ -232,5 +264,13 @@ class RAGService:
         logger.info(f"Deleted document {document_id} from Pinecone")
 
 
-# Singleton instance
-rag_service = RAGService()
+# ── Lazy singleton ──────────────────────────────────────────────────
+_rag_service: Optional[RAGService] = None
+
+
+def get_rag_service() -> RAGService:
+    """Return the RAGService singleton, creating it on first call."""
+    global _rag_service
+    if _rag_service is None:
+        _rag_service = RAGService()
+    return _rag_service
