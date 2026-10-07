@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "models/gemini-3.5-flash-lite"
-    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-2"
 
     # Pinecone
     PINECONE_API_KEY: str = ""

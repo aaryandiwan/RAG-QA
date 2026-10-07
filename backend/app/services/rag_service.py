@@ -105,42 +105,57 @@ class RAGService:
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
-    def _embed_text(self, text: str) -> List[float]:
-        """Embed a single string using Gemini embedding model."""
-        res = genai.embed_content(
-            model=settings.GEMINI_EMBEDDING_MODEL,
-            content=text,
-        )
-        return res["embedding"]
+    def _embed_batch(self, texts: List[str], max_retries: int = 4) -> List[List[float]]:
+        """
+        Embed a batch of strings in a single API call with automatic model fallback
+        and 429 retry backoff.
+        """
+        candidate_models = [
+            settings.GEMINI_EMBEDDING_MODEL,
+            "models/gemini-embedding-2",
+            "models/gemini-embedding-2-preview",
+            "models/gemini-embedding-001",
+        ]
+        # Remove duplicates while preserving order
+        candidate_models = list(dict.fromkeys(candidate_models))
 
-    def _embed_batch(self, texts: List[str], max_retries: int = 5) -> List[List[float]]:
-        """
-        Embed a batch of strings in a single API call with automatic 429 retry backoff.
-        """
-        delay = 5
-        for attempt in range(max_retries):
-            try:
-                res = genai.embed_content(
-                    model=settings.GEMINI_EMBEDDING_MODEL,
-                    content=texts,
-                )
-                embeddings = res["embedding"]
-                # In google.generativeai, batch returns list of lists
-                if embeddings and isinstance(embeddings[0], list):
-                    return embeddings
-                return [embeddings]
-            except Exception as e:
-                err_str = str(e).lower()
-                if ("429" in err_str or "quota" in err_str or "rate" in err_str) and attempt < max_retries - 1:
-                    logger.warning(
-                        f"Gemini embedding rate limit hit (attempt {attempt+1}/{max_retries}). "
-                        f"Waiting {delay}s before retrying..."
+        for model_name in candidate_models:
+            delay = 3
+            for attempt in range(max_retries):
+                try:
+                    res = genai.embed_content(
+                        model=model_name,
+                        content=texts,
                     )
-                    time.sleep(delay)
-                    delay = min(delay * 2, 45)
-                else:
-                    logger.error(f"Batch embedding failed on attempt {attempt+1}: {e}")
-                    raise e
+                    embeddings = res["embedding"]
+                    if embeddings and isinstance(embeddings[0], list):
+                        return embeddings
+                    return [embeddings]
+                except Exception as e:
+                    err_str = str(e).lower()
+                    # If daily quota exhausted on this model, switch to next model immediately
+                    if "requestsperday" in err_str or "limit: 1000" in err_str:
+                        logger.warning(
+                            f"Daily quota exhausted on {model_name}. Switching to next embedding model..."
+                        )
+                        break
+                    # If per-minute rate limit, back off and retry
+                    elif ("429" in err_str or "quota" in err_str or "rate" in err_str) and attempt < max_retries - 1:
+                        logger.warning(
+                            f"Rate limit on {model_name} (attempt {attempt+1}/{max_retries}). "
+                            f"Waiting {delay}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * 2, 30)
+                    else:
+                        if model_name == candidate_models[-1]:
+                            logger.error(f"Embedding failed on all models: {e}")
+                            raise e
+                        break
+
+    def _embed_text(self, text: str) -> List[float]:
+        """Embed a single string with candidate model fallback."""
+        return self._embed_batch([text])[0]
 
     def index_document(
         self,
