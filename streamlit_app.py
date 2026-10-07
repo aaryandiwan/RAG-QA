@@ -149,10 +149,18 @@ with st.sidebar:
                         if not parsed_docs:
                             st.error("Could not extract text from document.")
                         else:
-                            # Index document into user's Pinecone
+                            # Index document into user's Pinecone with live progress
                             service = get_user_rag_service()
                             doc_id = str(uuid.uuid4())
-                            num_chunks = service.index_document(parsed_docs, doc_id)
+
+                            prog_bar = st.progress(0, text="Preparing chunks and generating embeddings...")
+
+                            def on_progress(current, total):
+                                pct = min(int((current / total) * 100), 100)
+                                prog_bar.progress(pct, text=f"Indexing: {current} / {total} chunks ({pct}%)...")
+
+                            num_chunks = service.index_document(parsed_docs, doc_id, progress_callback=on_progress)
+                            prog_bar.empty()
                             
                             st.session_state.indexed_docs[doc_id] = {
                                 "filename": uploaded_file.name,

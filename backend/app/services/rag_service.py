@@ -113,42 +113,97 @@ class RAGService:
         )
         return res["embedding"]
 
-    def index_document(self, documents: List[Document], document_id: str) -> int:
+    def _embed_batch(self, texts: List[str], max_retries: int = 5) -> List[List[float]]:
         """
-        Chunk documents and store embeddings in Pinecone using native client.
+        Embed a batch of strings in a single API call with automatic 429 retry backoff.
+        """
+        delay = 5
+        for attempt in range(max_retries):
+            try:
+                res = genai.embed_content(
+                    model=settings.GEMINI_EMBEDDING_MODEL,
+                    content=texts,
+                )
+                embeddings = res["embedding"]
+                # In google.generativeai, batch returns list of lists
+                if embeddings and isinstance(embeddings[0], list):
+                    return embeddings
+                return [embeddings]
+            except Exception as e:
+                err_str = str(e).lower()
+                if ("429" in err_str or "quota" in err_str or "rate" in err_str) and attempt < max_retries - 1:
+                    logger.warning(
+                        f"Gemini embedding rate limit hit (attempt {attempt+1}/{max_retries}). "
+                        f"Waiting {delay}s before retrying..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 45)
+                else:
+                    logger.error(f"Batch embedding failed on attempt {attempt+1}: {e}")
+                    raise e
+
+    def index_document(
+        self,
+        documents: List[Document],
+        document_id: str,
+        progress_callback: Optional[Any] = None,
+    ) -> int:
+        """
+        Chunk documents and store embeddings in Pinecone using batch processing
+        with rate-limit protection for large multi-hundred-page documents.
         """
         # Split documents into chunks
         chunks = self.text_splitter.split_documents(documents)
+        total_chunks = len(chunks)
+        logger.info(f"Indexing document {document_id}: total {total_chunks} chunks to process")
 
-        # Prepare vectors for upsert
+        batch_size = 40  # Embed 40 chunks per Gemini API call
         vectors = []
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"{document_id}#{i}"
-            embedding = self._embed_text(chunk.page_content)
-            metadata = chunk.metadata.copy()
-            metadata["text"] = chunk.page_content
-            metadata["document_id"] = document_id
 
-            vectors.append({
-                "id": chunk_id,
-                "values": embedding,
-                "metadata": metadata,
-            })
+        for batch_start in range(0, total_chunks, batch_size):
+            batch_chunks = chunks[batch_start : batch_start + batch_size]
+            batch_texts = [c.page_content for c in batch_chunks]
 
-        # Upsert in batches of 100
-        batch_size = 100
-        try:
-            for i in range(0, len(vectors), batch_size):
-                batch = vectors[i : i + batch_size]
-                self.index.upsert(vectors=batch)
-        except Exception as e:
-            logger.error(f"Pinecone upsert failed: {e}")
-            raise
+            # Batch embed in 1 single API call
+            embeddings = self._embed_batch(batch_texts)
+
+            for j, (chunk, embedding) in enumerate(zip(batch_chunks, embeddings)):
+                idx = batch_start + j
+                chunk_id = f"{document_id}#{idx}"
+                metadata = chunk.metadata.copy()
+                metadata["text"] = chunk.page_content
+                metadata["document_id"] = document_id
+
+                vectors.append({
+                    "id": chunk_id,
+                    "values": embedding,
+                    "metadata": metadata,
+                })
+
+            # Upsert into Pinecone in batches of 100
+            if len(vectors) >= 100:
+                self.index.upsert(vectors=vectors[:100])
+                vectors = vectors[100:]
+
+            # Update progress callback if provided
+            processed = min(batch_start + batch_size, total_chunks)
+            if progress_callback:
+                try:
+                    progress_callback(processed, total_chunks)
+                except Exception:
+                    pass
+
+            # Gentle sleep between batch calls to stay well within free tier limits
+            time.sleep(0.4)
+
+        # Upsert any remaining vectors
+        if vectors:
+            self.index.upsert(vectors=vectors)
 
         logger.info(
-            f"Indexed document {document_id}: {len(chunks)} chunks stored in Pinecone"
+            f"Successfully indexed document {document_id}: {total_chunks} chunks stored in Pinecone"
         )
-        return len(chunks)
+        return total_chunks
 
     def query(
         self,
