@@ -86,7 +86,7 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception("Upload processing failed")
-        raise HTTPException(status_code=500, detail="Document processing or indexing failed.") from e
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}") from e
 
     finally:
         # Clean up temp file

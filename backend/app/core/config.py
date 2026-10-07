@@ -1,5 +1,10 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List, Optional
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_PATH = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -28,8 +33,16 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    @field_validator("GEMINI_API_KEY", "PINECONE_API_KEY", mode="before")
+    @classmethod
+    def clean_api_keys(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
     class Config:
-        env_file = ".env"
+        env_file = str(ENV_PATH)
+        extra = "ignore"
 
 
 settings = Settings()
