@@ -108,7 +108,7 @@ class RAGService:
     def _embed_batch(self, texts: List[str], max_retries: int = 4) -> List[List[float]]:
         """
         Embed a batch of strings in a single API call with automatic model fallback
-        and 429 retry backoff.
+        and 429 retry backoff. Guaranteed to return a list of embeddings or raise a clear error.
         """
         candidate_models = [
             settings.GEMINI_EMBEDDING_MODEL,
@@ -118,6 +118,7 @@ class RAGService:
         ]
         # Remove duplicates while preserving order
         candidate_models = list(dict.fromkeys(candidate_models))
+        last_error = None
 
         for model_name in candidate_models:
             delay = 3
@@ -127,31 +128,56 @@ class RAGService:
                         model=model_name,
                         content=texts,
                     )
-                    embeddings = res["embedding"]
+                    embeddings = res.get("embedding", [])
                     if embeddings and isinstance(embeddings[0], list):
                         return embeddings
-                    return [embeddings]
+                    if embeddings:
+                        return [embeddings]
                 except Exception as e:
+                    last_error = e
                     err_str = str(e).lower()
-                    # If daily quota exhausted on this model, switch to next model immediately
-                    if "requestsperday" in err_str or "limit: 1000" in err_str:
+
+                    # Check if this is a daily quota exhaustion (e.g. limit 1000, hours wait)
+                    is_daily_limit = (
+                        "requestsperday" in err_str
+                        or "limit: 1000" in err_str
+                        or "freetier" in err_str
+                        or "retry in 3h" in err_str
+                        or "retry in 2h" in err_str
+                        or "retry in 1h" in err_str
+                    )
+
+                    if is_daily_limit:
                         logger.warning(
-                            f"Daily quota exhausted on {model_name}. Switching to next embedding model..."
+                            f"Daily quota exhausted on {model_name}. Switching immediately to next embedding model..."
                         )
                         break
-                    # If per-minute rate limit, back off and retry
-                    elif ("429" in err_str or "quota" in err_str or "rate" in err_str) and attempt < max_retries - 1:
+
+                    # If temporary rate limit (per-minute RPM), back off and retry
+                    elif "429" in err_str or "quota" in err_str or "rate" in err_str:
+                        import re
+                        match = re.search(r"retry in (\d+)", err_str)
+                        retry_wait = max(int(match.group(1)) + 1, delay) if match else delay
+
+                        # If retry wait is absurdly high (> 60s), treat as daily limit and switch model
+                        if retry_wait > 60:
+                            logger.warning(
+                                f"Long retry delay ({retry_wait}s) requested by {model_name}. Switching to next embedding model..."
+                            )
+                            break
+
                         logger.warning(
-                            f"Rate limit on {model_name} (attempt {attempt+1}/{max_retries}). "
-                            f"Waiting {delay}s..."
+                            f"Rate limit on {model_name} (attempt {attempt+1}/{max_retries}). Waiting {retry_wait}s..."
                         )
-                        time.sleep(delay)
-                        delay = min(delay * 2, 30)
+                        time.sleep(retry_wait)
+                        delay = min(delay * 2, 20)
                     else:
-                        if model_name == candidate_models[-1]:
-                            logger.error(f"Embedding failed on all models: {e}")
-                            raise e
-                        break
+                        logger.warning(f"Error on {model_name} (attempt {attempt+1}): {e}")
+                        time.sleep(2)
+
+        if last_error:
+            raise RuntimeError(f"Embedding failed across all candidate models: {last_error}")
+        raise RuntimeError("Embedding failed: No embedding returned from Gemini service.")
 
     def _embed_text(self, text: str) -> List[float]:
         """Embed a single string with candidate model fallback."""
@@ -172,7 +198,7 @@ class RAGService:
         total_chunks = len(chunks)
         logger.info(f"Indexing document {document_id}: total {total_chunks} chunks to process")
 
-        batch_size = 40  # Embed 40 chunks per Gemini API call
+        batch_size = 20  # Safe 20 chunks per Gemini API call to prevent rate limiting
         vectors = []
 
         for batch_start in range(0, total_chunks, batch_size):
