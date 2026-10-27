@@ -4,40 +4,175 @@ import tempfile
 import uuid
 import streamlit as st
 
-# Ensure backend directory is in python path
+# Ensure backend directory and root directory are in python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.join(current_dir, "backend")
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 # Page configuration
 st.set_page_config(
-    page_title="RAG-QA — Document Intelligence",
-    page_icon="🧠",
+    page_title="RAG-QA | Document Intelligence",
+    page_icon="◆",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom Styling
+# Premium Custom Styling (Clean, Executive, Enterprise SaaS aesthetic)
 st.markdown("""
 <style>
-    .main-title {
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Top brand header */
+    .brand-wrapper {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 4px;
+    }
+    .brand-title {
         font-size: 2.2rem;
         font-weight: 700;
-        color: #EA580C;
-        margin-bottom: 0.2rem;
+        letter-spacing: -0.03em;
+        margin: 0;
+        background: linear-gradient(135deg, #1E293B 0%, #475569 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
-    .sub-title {
-        color: #78716C;
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
+    @media (prefers-color-scheme: dark) {
+        .brand-title {
+            background: linear-gradient(135deg, #F8FAFC 0%, #CBD5E1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
     }
-    .key-card {
-        background-color: #FFF7ED;
-        border: 1px solid #FFEDD5;
+    .brand-badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563EB;
+        border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+    .brand-sub {
+        font-size: 0.95rem;
+        color: #64748B;
+        margin-bottom: 24px;
+        font-weight: 400;
+    }
+
+    /* Cards */
+    .saas-card {
         border-radius: 10px;
-        padding: 14px;
+        padding: 16px;
         margin-bottom: 16px;
+        background: rgba(248, 250, 252, 0.8);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    @media (prefers-color-scheme: dark) {
+        .saas-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.6);
+        }
+    }
+
+    /* Info banner */
+    .welcome-card {
+        border-radius: 10px;
+        padding: 16px 20px;
+        background: rgba(238, 242, 255, 0.6);
+        border: 1px solid rgba(199, 210, 254, 0.7);
+        color: #3730A3;
+        margin-bottom: 24px;
+        font-size: 0.92rem;
+        line-height: 1.5;
+    }
+    @media (prefers-color-scheme: dark) {
+        .welcome-card {
+            background: rgba(30, 27, 75, 0.4);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #C7D2FE;
+        }
+    }
+
+    /* Feature guides in empty state */
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+        margin-bottom: 28px;
+    }
+    .feature-item {
+        padding: 16px;
+        border-radius: 8px;
+        background: rgba(241, 245, 249, 0.5);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    @media (prefers-color-scheme: dark) {
+        .feature-item {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+    }
+    .feature-step {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #2563EB;
+        letter-spacing: 0.05em;
+        margin-bottom: 4px;
+    }
+    .feature-title {
+        font-size: 0.92rem;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    .feature-desc {
+        font-size: 0.82rem;
+        color: #64748B;
+        line-height: 1.4;
+    }
+
+    /* Citation cards */
+    .citation-card {
+        padding: 12px 14px;
+        border-radius: 8px;
+        background: rgba(248, 250, 252, 0.8);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        margin-bottom: 10px;
+    }
+    @media (prefers-color-scheme: dark) {
+        .citation-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.6);
+        }
+    }
+    .citation-badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: rgba(59, 130, 246, 0.12);
+        color: #2563EB;
+        display: inline-block;
+        margin-bottom: 6px;
+    }
+
+    /* Refined buttons */
+    div.stButton > button {
+        border-radius: 7px;
+        font-weight: 500;
+        transition: all 0.15s ease;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -48,30 +183,28 @@ try:
     from app.services.rag_service import RAGService
     from app.utils.document_parser import parse_document
 except Exception as e:
-    st.error(f"Error loading RAG backend: {e}")
+    st.error(f"Error loading RAG backend core: {e}")
     st.stop()
 
 # Session State Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "indexed_docs" not in st.session_state:
-    st.session_state.indexed_docs = {}  # {doc_id: {"filename": ..., "chunks": ...}}
+    st.session_state.indexed_docs = {}
 if "rag_service" not in st.session_state:
     st.session_state.rag_service = None
 
-# ── Sidebar: Bring Your Own Key (BYOK) ────────────────────────────────
+# ── Sidebar: API Credentials & Documents ──────────────────────────────
 with st.sidebar:
-    st.title("⚙️ Setup & Upload")
-    
-    st.subheader("🔑 Your API Keys")
-    st.caption("Enter your personal keys to use the app. Your keys are private to your session and never stored.")
+    st.markdown("### Configuration")
+    st.caption("Provide your credentials to establish an isolated session.")
 
     gemini_key = st.text_input(
         "Google Gemini API Key",
         value=st.session_state.get("user_gemini_key", ""),
         type="password",
         placeholder="AIzaSy...",
-        help="Free key from Google AI Studio",
+        help="Obtain free key from Google AI Studio",
     )
     
     pinecone_key = st.text_input(
@@ -79,19 +212,19 @@ with st.sidebar:
         value=st.session_state.get("user_pinecone_key", ""),
         type="password",
         placeholder="pcsk_...",
-        help="Free key from Pinecone.io",
+        help="Obtain free key from Pinecone Console",
     )
 
-    with st.expander("🛠️ Advanced Settings (Optional)"):
+    with st.expander("Advanced Settings"):
         pinecone_index = st.text_input(
             "Pinecone Index Name",
             value=st.session_state.get("user_pinecone_index", "rag-qa-index"),
-            help="Name of your Pinecone index"
+            help="Target Pinecone index name"
         )
         pinecone_env = st.text_input(
-            "Pinecone Cloud Region",
+            "Cloud Region",
             value=st.session_state.get("user_pinecone_env", "us-east-1"),
-            help="Pinecone serverless region"
+            help="Pinecone Serverless deployment region"
         )
 
     # Save to session state
@@ -104,26 +237,26 @@ with st.sidebar:
 
     if not keys_ready:
         st.markdown("""
-        <div style="font-size:0.8rem; color:#78716C; margin-top:6px;">
-            Need keys? Get them free here:<br/>
-            • <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio (Gemini)</a><br/>
-            • <a href="https://app.pinecone.io/" target="_blank">Pinecone Console</a>
+        <div style="font-size:0.8rem; color:#64748B; margin-top:8px; line-height:1.5;">
+            Need free API keys?<br/>
+            • <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#2563EB; text-decoration:none;">Google AI Studio</a><br/>
+            • <a href="https://app.pinecone.io/" target="_blank" style="color:#2563EB; text-decoration:none;">Pinecone Console</a>
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.success("✓ API Keys configured for this session!")
+        st.caption("Active · Session keys configured")
 
     st.markdown("---")
-    st.subheader("📄 Upload Document")
+    st.markdown("### Document Management")
     uploaded_file = st.file_uploader(
-        "Upload PDF, DOCX, TXT, or MD",
+        "Ingest Knowledge Base",
         type=["pdf", "docx", "txt", "md"],
-        help="Max file size 20MB",
+        help="Supported formats: PDF, DOCX, TXT, MD. Max 20MB.",
         disabled=not keys_ready,
     )
 
     def get_user_rag_service():
-        """Get or initialize RAG service with the current user's personal keys."""
+        """Get or initialize RAG service with the current session credentials."""
         if st.session_state.rag_service is None:
             st.session_state.rag_service = RAGService(
                 gemini_api_key=st.session_state["user_gemini_key"],
@@ -136,7 +269,7 @@ with st.sidebar:
     if uploaded_file is not None and keys_ready:
         file_key = f"uploaded_{uploaded_file.name}_{uploaded_file.size}"
         if file_key not in st.session_state:
-            with st.spinner(f"Processing and indexing '{uploaded_file.name}' with your keys..."):
+            with st.spinner(f"Ingesting '{uploaded_file.name}'..."):
                 try:
                     ext = uploaded_file.name.split(".")[-1].lower()
                     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp_file:
@@ -147,17 +280,16 @@ with st.sidebar:
                         # Parse document
                         parsed_docs = parse_document(tmp_path, uploaded_file.name)
                         if not parsed_docs:
-                            st.error("Could not extract text from document.")
+                            st.error("Document parsing failed: No extractable text detected.")
                         else:
-                            # Index document into user's Pinecone with live progress
                             service = get_user_rag_service()
                             doc_id = str(uuid.uuid4())
 
-                            prog_bar = st.progress(0, text="Preparing chunks and generating embeddings...")
+                            prog_bar = st.progress(0, text="Generating embeddings...")
 
                             def on_progress(current, total):
                                 pct = min(int((current / total) * 100), 100)
-                                prog_bar.progress(pct, text=f"Indexing: {current} / {total} chunks ({pct}%)...")
+                                prog_bar.progress(pct, text=f"Indexing: {current}/{total} chunks ({pct}%)...")
 
                             num_chunks = service.index_document(parsed_docs, doc_id, progress_callback=on_progress)
                             prog_bar.empty()
@@ -167,71 +299,102 @@ with st.sidebar:
                                 "chunks": num_chunks,
                             }
                             st.session_state[file_key] = True
-                            st.success(f"✓ Indexed '{uploaded_file.name}' ({num_chunks} chunks)")
+                            st.success(f"Indexed '{uploaded_file.name}' ({num_chunks} chunks)")
                     finally:
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)
                 except Exception as err:
-                    st.error(f"Upload failed: {err}")
+                    st.error(f"Ingestion error: {err}")
 
-    # Indexed Documents List
+    # Active Documents List
     st.markdown("---")
-    st.subheader(f"📚 Indexed Documents ({len(st.session_state.indexed_docs)})")
+    st.markdown(f"### Active Documents ({len(st.session_state.indexed_docs)})")
     if st.session_state.indexed_docs:
         for doc_id, info in list(st.session_state.indexed_docs.items()):
-            col1, col2 = st.columns([4, 1])
+            col1, col2 = st.columns([4, 1.2])
             with col1:
-                st.caption(f"📄 **{info['filename']}** ({info['chunks']} chunks)")
+                st.caption(f"**{info['filename']}**  \n{info['chunks']} indexed chunks")
             with col2:
-                if st.button("🗑️", key=f"del_{doc_id}", help=f"Delete {info['filename']}"):
+                if st.button("Delete", key=f"del_{doc_id}", help=f"Delete {info['filename']}"):
                     try:
                         service = get_user_rag_service()
                         service.delete_document(doc_id)
                         del st.session_state.indexed_docs[doc_id]
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Delete error: {e}")
+                        st.error(f"Deletion failed: {e}")
     else:
-        st.info("No documents indexed yet. Enter keys and upload above!")
+        st.caption("No documents currently indexed.")
 
-    if st.button("🧹 Clear Chat History"):
-        st.session_state.messages = []
-        st.rerun()
+    if st.session_state.messages:
+        if st.button("Clear Conversation", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
 
-# ── Main Chat Area ──────────────────────────────────────────────────
-st.markdown('<div class="main-title">RAG-QA 🧠📄</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Intelligent RAG Document Question Answering powered by Google Gemini & Pinecone</div>', unsafe_allow_html=True)
+# ── Main Workspace ──────────────────────────────────────────────────
+st.markdown("""
+<div class="brand-wrapper">
+    <h1 class="brand-title">RAG-QA</h1>
+    <span class="brand-badge">Enterprise Edition</span>
+</div>
+<div class="brand-sub">Grounded document intelligence powered by Gemini 3.5 Flash & Pinecone Vector Search</div>
+""", unsafe_allow_html=True)
 
-# If keys are missing, show prominent callout
+# Onboarding guide if keys not provided
 if not keys_ready:
-    st.info("👈 **Welcome to RAG-QA!** To get started, please enter your **Gemini API Key** and **Pinecone API Key** in the sidebar. Your keys are private to your session and never stored.")
+    st.markdown("""
+    <div class="welcome-card">
+        <strong>Getting Started</strong><br/>
+        Enter your <strong>Google Gemini API Key</strong> and <strong>Pinecone API Key</strong> in the configuration sidebar to activate the reasoning engine. Your credentials remain strictly in memory and are never stored or logged.
+    </div>
+    <div class="features-grid">
+        <div class="feature-item">
+            <div class="feature-step">Phase 1</div>
+            <div class="feature-title">Credentials</div>
+            <div class="feature-desc">Input your Gemini and Pinecone keys in the sidebar.</div>
+        </div>
+        <div class="feature-item">
+            <div class="feature-step">Phase 2</div>
+            <div class="feature-title">Ingest</div>
+            <div class="feature-desc">Upload PDF, DOCX, TXT, or Markdown documents for vector indexing.</div>
+        </div>
+        <div class="feature-item">
+            <div class="feature-step">Phase 3</div>
+            <div class="feature-title">Synthesize</div>
+            <div class="feature-desc">Query your knowledge base with transparent source attribution.</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Display Chat Messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("sources"):
-            with st.expander("📚 View Referenced Sources", expanded=False):
+            with st.expander(f"Referenced Sources ({len(msg['sources'])})", expanded=False):
                 for i, src in enumerate(msg["sources"], 1):
-                    page_info = f" · Page {src['page']}" if src.get("page") else ""
-                    st.markdown(f"**Source {i}: {src['filename']}{page_info}**")
-                    st.caption(src["content"])
-                    st.markdown("---")
+                    page_badge = f" · Page {src['page']}" if src.get("page") else ""
+                    st.markdown(f"""
+                    <div class="citation-card">
+                        <span class="citation-badge">Source {i} — {src['filename']}{page_badge}</span>
+                        <div style="font-size: 0.85rem; color: #475569; line-height: 1.45;">{src['content']}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-# User Input
-chat_placeholder = "Ask a question about your uploaded documents..." if keys_ready else "Please enter your API keys in the sidebar first..."
+# Chat Input Area
+chat_placeholder = "Ask a question about your indexed knowledge base..." if keys_ready else "Configure API credentials in the sidebar to begin..."
 if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
     if not st.session_state.indexed_docs:
-        st.warning("⚠️ Please upload and index at least one document from the sidebar first!")
+        st.warning("Please upload and index at least one document in the sidebar before querying.")
     else:
         # Append User Message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Assistant Thinking & Streaming
+        # Assistant Thinking & Retrieval
         with st.chat_message("assistant"):
-            with st.spinner("Searching document vectors & reasoning..."):
+            with st.spinner("Retrieving relevant context and synthesizing..."):
                 try:
                     service = get_user_rag_service()
                     
@@ -263,12 +426,15 @@ if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
                     ]
 
                     if sources_data:
-                        with st.expander("📚 View Referenced Sources", expanded=False):
+                        with st.expander(f"Referenced Sources ({len(sources_data)})", expanded=False):
                             for i, src in enumerate(sources_data, 1):
-                                page_info = f" · Page {src['page']}" if src.get("page") else ""
-                                st.markdown(f"**Source {i}: {src['filename']}{page_info}**")
-                                st.caption(src["content"])
-                                st.markdown("---")
+                                page_badge = f" · Page {src['page']}" if src.get("page") else ""
+                                st.markdown(f"""
+                                <div class="citation-card">
+                                    <span class="citation-badge">Source {i} — {src['filename']}{page_badge}</span>
+                                    <div style="font-size: 0.85rem; color: #475569; line-height: 1.45;">{src['content']}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
 
                     # Save to session history
                     st.session_state.messages.append({
@@ -278,7 +444,7 @@ if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
                     })
 
                 except Exception as e:
-                    error_msg = f"Sorry, an error occurred while processing: {e}"
+                    error_msg = f"An error occurred while processing your request: {e}"
                     st.error(error_msg)
                     st.session_state.messages.append({
                         "role": "assistant",
