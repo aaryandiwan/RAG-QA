@@ -11,17 +11,18 @@ RAG-QA is a pure Python Retrieval-Augmented Generation (RAG) system powered by S
                    │  - Drag & Drop Document Ingestion       │
                    │  - BYOK (Bring Your Own Keys) Sidebar   │
                    │  - Dual Engine Switch (Gemini / Ollama) │
+                   │  - Smart Auto-Hide of Ollama on Cloud   │
                    │  - Source Attribution & Citations       │
                    └──────────────────┬──────────────────────┘
                                       │ In-Process Python Call
                    ┌──────────────────▼──────────────────────┐
                    │           RAG Service Core              │
-                   │  (app/services/rag_service.py)          │
+                   │  (backend/app/services/rag_service.py)  │
                    │                                         │
-                   │  - Document Parsing (PyPDF, docx)       │
-                   │  - Chunking (RecursiveTextSplitter)     │
-                   │  - Embedding Generation & Fallback      │
-                   │  - Pinecone Vector Indexing & Search    │
+                   │  - Continuous Multi-Page Parsing        │
+                   │  - Chunking (1,500 chars, 250 overlap)  │
+                   │  - Embedding Generation & Retry         │
+                   │  - Pinecone Neighbor Expansion (#idx+1) │
                    └──────────────────┬──────────────────────┘
                                       │
               ┌───────────────────────┼───────────────────────┐
@@ -42,10 +43,10 @@ RAG-QA is a pure Python Retrieval-Augmented Generation (RAG) system powered by S
 File Upload (PDF / DOCX / TXT / MD)
     │
     ▼
-parse_document()                 ← Extracts structured text per page or section
+parse_document()                 ← Continuous text extraction with [Page X] section tags
     │
     ▼
-RecursiveCharacterTextSplitter   ← chunk_size=500, overlap=50
+RecursiveCharacterTextSplitter   ← chunk_size=1500, overlap=250 (prevents list truncation)
     │
     ▼
 Google Gemini Embedding          ← 3072-dim vector per chunk
@@ -63,10 +64,16 @@ User Question
 Embed Question                   ← Generates 3072-dim query vector
     │
     ▼
-Pinecone Query (top_k=5)         ← Cosine similarity match over document index
+Pinecone Query (top_k=8)         ← Cosine similarity match over document index
     │
     ▼
-Context Assembly                 ← Top-K context chunks combined into prompt
+Neighbor Expansion               ← Automatically retrieves #idx+1 neighbor chunk continuation
+    │
+    ▼
+Sequential Reading Sort          ← Sorts retrieved context by (document_id, chunk_index)
+    │
+    ▼
+Context Assembly                 ← Natural reading order context assembled into prompt
     │
     ├─────────────────────────────┐
     ▼                             ▼
@@ -85,5 +92,7 @@ Google Gemini 3.5 Flash       Local Ollama (Qwen 2.5)
 
 The project is natively deployed on Streamlit Community Cloud:
 - Live URL: [rag-application26.streamlit.app](https://rag-application26.streamlit.app)
-- Deployment Process: Connected directly to GitHub main branch.
+- Deployment Process: Connected directly to GitHub main branch with continuous integration.
 - BYOK Architecture: Users supply their own Gemini & Pinecone API keys in the sidebar. No server-side secrets are exposed or billed.
+- Smart Auto-Detection: On Streamlit Cloud containers, Ollama controls and offline warning alerts are automatically hidden, seamlessly defaulting visitors to Google Gemini.
+

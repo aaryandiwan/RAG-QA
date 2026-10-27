@@ -19,7 +19,7 @@ The application supports a dual-engine architecture: you can run queries through
 - Dual Inference Engine:
   - Google Gemini 3.5 Flash: High-speed cloud generation with generous free-tier throughput.
   - Ollama Local (Qwen 2.5): 100% private, local GPU/CPU execution with unlimited tokens and zero quota limits.
-- High-Dimensional Vector Search: Chunks text into 500-character segments with 50-character overlap, generates 3072-dimensional vector embeddings, and performs top-K cosine similarity retrieval via Pinecone Serverless.
+- High-Dimensional Vector Search: Chunks text into 1,500-character segments with 250-character overlap using continuous cross-page assembly, generates 3072-dimensional vector embeddings, and performs top-K cosine similarity retrieval via Pinecone Serverless with sequential neighbor expansion.
 - Verifiable Source Citations: Every answer references the source document name, page number, and matched text snippet to eliminate ungrounded hallucinations.
 - Bring-Your-Own-Key (BYOK) Security: User API credentials are kept exclusively in transient browser session memory. No developer keys are exposed or billed.
 
@@ -32,11 +32,11 @@ The application supports a dual-engine architecture: you can run queries through
                   │
                   ▼
          [Document Parser]
-  (Extracts text pages and structural metadata)
+  (Extracts continuous text with [Page X] headers)
                   │
                   ▼
      [Recursive Text Splitter]
-  (500-char chunks with 50-char overlap)
+  (1,500-char chunks with 250-char overlap)
                   │
                   ▼
      [Gemini Batch Embedding]
@@ -51,7 +51,7 @@ The application supports a dual-engine architecture: you can run queries through
                   │
                   ▼
     [Cosine Similarity Search]
-  (Pinecone retrieves top 5 relevant chunks)
+  (Pinecone retrieves top 8 chunks + neighbor expansion)
                   │
                   ├─────────────────────────────┐
                   ▼                             ▼
@@ -137,27 +137,32 @@ To use local models like Qwen 2.5 without hitting API limits:
    ```
 3. Open `http://localhost:8501`, switch the sidebar radio button to **Ollama Qwen (Local)**, and chat directly with your documents.
 
+*Note on Cloud Deployments:* When hosted on Streamlit Community Cloud (e.g., `rag-application26.streamlit.app`), the application automatically detects that it is running in a cloud container without a local daemon and hides the Ollama options cleanly, defaulting to Google Gemini without displaying false-positive warning banners.
+
 ---
 
 ## Project Structure
 
 ```
 RAG-QA/
-├── app/
-│   ├── core/
-│   │   ├── config.py             # Environment configuration & key sanitization
-│   │   └── logging.py            # Structured logging
-│   ├── services/
-│   │   ├── rag_service.py        # Core RAG engine: batch embedding, indexing, retrieval
-│   │   └── ollama_service.py     # Local Ollama REST client & status probe
-│   └── utils/
-│       └── document_parser.py    # PyPDF and python-docx text extractors
+├── backend/
+│   ├── app/
+│   │   ├── core/
+│   │   │   ├── config.py             # App configuration, chunk sizing (1500 chars), API sanitization
+│   │   │   └── logging.py            # Structured logging
+│   │   ├── services/
+│   │   │   ├── rag_service.py        # Core RAG engine, neighbor expansion, context sorting
+│   │   │   └── ollama_service.py     # Local Ollama REST client & status probe
+│   │   └── utils/
+│   │       └── document_parser.py    # Cross-page continuous text parser (PDF, DOCX)
+│   └── tests/
+│       └── test_api.py               # Automated pytest suite
 ├── docs/
-│   ├── architecture.md           # System design & component breakdown
-│   └── PROJECT_GUIDE.md          # Technical interview study guide
-├── requirements.txt              # Production Python dependencies
-├── run_local.bat                 # Windows batch runner
-└── streamlit_app.py              # Main Streamlit web application
+│   ├── architecture.md               # System design & component breakdown
+│   └── PROJECT_GUIDE.md              # Technical blueprint and interview study guide
+├── requirements.txt                  # Production Python dependencies
+├── run_local.bat                     # Windows batch runner
+└── streamlit_app.py                  # Main Streamlit web application
 ```
 
 ---

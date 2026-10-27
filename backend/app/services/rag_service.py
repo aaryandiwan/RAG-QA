@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """
     Core RAG service handling:
-    - Document chunking and embedding (via Gemini models/gemini-embedding-001)
-    - Pinecone vector store indexing (via native client, 3072 dims)
-    - Retrieval and Gemini answer generation (via models/gemini-3.8-flash)
+    - Continuous document chunking (1500 chars) and batch embedding (via Gemini embedding models)
+    - Pinecone vector store indexing (Serverless 3072 dims)
+    - Sequential neighbor window retrieval and dual-engine generation (Google Gemini / Local Ollama Qwen)
     """
 
     def __init__(
