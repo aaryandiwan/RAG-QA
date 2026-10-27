@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Premium Custom Styling (Clean, Executive, Enterprise SaaS aesthetic)
+# Custom Styling (Clean, Executive, Enterprise SaaS aesthetic)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -181,6 +181,7 @@ st.markdown("""
 try:
     from app.core.config import settings
     from app.services.rag_service import RAGService
+    from app.services.ollama_service import check_ollama_status
     from app.utils.document_parser import parse_document
 except Exception as e:
     st.error(f"Error loading RAG backend core: {e}")
@@ -194,32 +195,74 @@ if "indexed_docs" not in st.session_state:
 if "rag_service" not in st.session_state:
     st.session_state.rag_service = None
 
-# ── Sidebar: API Credentials & Documents ──────────────────────────────
+# Check Ollama Availability
+ollama_online, installed_ollama_models = check_ollama_status()
+
+# ── Sidebar: Configuration ───────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### Configuration")
-    st.caption("Provide your credentials to establish an isolated session.")
+    st.markdown("### Inference Engine")
+    
+    engine_choice = st.radio(
+        "Select Model Provider",
+        options=["Google Gemini (Cloud)", "Ollama Qwen (Local)"],
+        index=0,
+        help="Switch between cloud-based Gemini API or offline local open-source Ollama models.",
+        label_visibility="collapsed"
+    )
+
+    selected_ollama_model = "qwen2.5:3b"
+
+    if engine_choice == "Ollama Qwen (Local)":
+        if ollama_online:
+            st.success("Connected to local Ollama (localhost:11434)")
+            if installed_ollama_models:
+                selected_ollama_model = st.selectbox(
+                    "Local Model",
+                    options=installed_ollama_models,
+                    index=0,
+                    help="Detected models currently installed in your local Ollama library."
+                )
+            st.caption("Offline inference active. No API rate limits or usage billing.")
+        else:
+            st.warning("Local Ollama service was not detected at http://localhost:11434.")
+            st.markdown("""
+            <div style="font-size:0.8rem; color:#64748B; line-height:1.45; margin-bottom:8px;">
+                To run open-source models locally:<br/>
+                1. Install Ollama from <a href="https://ollama.com" target="_blank" style="color:#2563EB;">ollama.com</a><br/>
+                2. Run <code>ollama run qwen2.5:3b</code> in your terminal<br/>
+                Or switch to <strong>Google Gemini (Cloud)</strong> above.
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("### Vector Storage & API Credentials")
+    st.caption("Credentials remain private to your session memory and are never persisted to disk.")
+
+    # Default to .env credentials if present
+    default_gemini = st.session_state.get("user_gemini_key", "") or settings.GEMINI_API_KEY
+    default_pinecone = st.session_state.get("user_pinecone_key", "") or settings.PINECONE_API_KEY
 
     gemini_key = st.text_input(
         "Google Gemini API Key",
-        value=st.session_state.get("user_gemini_key", ""),
+        value=default_gemini,
         type="password",
         placeholder="AIzaSy...",
-        help="Obtain free key from Google AI Studio",
+        help="Used for high-dimensional embeddings and cloud generation.",
     )
     
     pinecone_key = st.text_input(
         "Pinecone API Key",
-        value=st.session_state.get("user_pinecone_key", ""),
+        value=default_pinecone,
         type="password",
         placeholder="pcsk_...",
-        help="Obtain free key from Pinecone Console",
+        help="Free Serverless vector database key from app.pinecone.io",
     )
 
-    with st.expander("Advanced Settings"):
+    with st.expander("Advanced Vector Settings"):
         pinecone_index = st.text_input(
-            "Pinecone Index Name",
+            "Index Name",
             value=st.session_state.get("user_pinecone_index", "rag-qa-index"),
-            help="Target Pinecone index name"
+            help="Target Pinecone vector index name"
         )
         pinecone_env = st.text_input(
             "Cloud Region",
@@ -227,7 +270,7 @@ with st.sidebar:
             help="Pinecone Serverless deployment region"
         )
 
-    # Save to session state
+    # Save credentials to session state
     st.session_state["user_gemini_key"] = gemini_key.strip()
     st.session_state["user_pinecone_key"] = pinecone_key.strip()
     st.session_state["user_pinecone_index"] = pinecone_index.strip()
@@ -277,7 +320,6 @@ with st.sidebar:
                         tmp_path = tmp_file.name
 
                     try:
-                        # Parse document
                         parsed_docs = parse_document(tmp_path, uploaded_file.name)
                         if not parsed_docs:
                             st.error("Document parsing failed: No extractable text detected.")
@@ -337,21 +379,21 @@ st.markdown("""
     <h1 class="brand-title">RAG-QA</h1>
     <span class="brand-badge">Enterprise Edition</span>
 </div>
-<div class="brand-sub">Grounded document intelligence powered by Gemini 3.5 Flash & Pinecone Vector Search</div>
+<div class="brand-sub">Grounded document intelligence powered by Gemini 3.5 Flash, Ollama Qwen 2.5, and Pinecone Vector Search</div>
 """, unsafe_allow_html=True)
 
-# Onboarding guide if keys not provided
+# Onboarding guide if keys not configured
 if not keys_ready:
     st.markdown("""
     <div class="welcome-card">
         <strong>Getting Started</strong><br/>
-        Enter your <strong>Google Gemini API Key</strong> and <strong>Pinecone API Key</strong> in the configuration sidebar to activate the reasoning engine. Your credentials remain strictly in memory and are never stored or logged.
+        Enter your <strong>Google Gemini API Key</strong> and <strong>Pinecone API Key</strong> in the sidebar to activate the knowledge retrieval engine. Your credentials remain strictly in memory and are never persisted.
     </div>
     <div class="features-grid">
         <div class="feature-item">
             <div class="feature-step">Phase 1</div>
             <div class="feature-title">Credentials</div>
-            <div class="feature-desc">Input your Gemini and Pinecone keys in the sidebar.</div>
+            <div class="feature-desc">Configure your session credentials in the sidebar.</div>
         </div>
         <div class="feature-item">
             <div class="feature-step">Phase 2</div>
@@ -361,7 +403,7 @@ if not keys_ready:
         <div class="feature-item">
             <div class="feature-step">Phase 3</div>
             <div class="feature-title">Synthesize</div>
-            <div class="feature-desc">Query your knowledge base with transparent source attribution.</div>
+            <div class="feature-desc">Query with Cloud Gemini or local Ollama with transparent citations.</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -387,67 +429,80 @@ if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
     if not st.session_state.indexed_docs:
         st.warning("Please upload and index at least one document in the sidebar before querying.")
     else:
-        # Append User Message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Check if Ollama was selected but is offline
+        is_ollama_mode = (engine_choice == "Ollama Qwen (Local)")
+        if is_ollama_mode and not ollama_online:
+            st.error("Cannot query via Ollama: Local Ollama server is not running on localhost:11434. Please start Ollama or switch to Google Gemini (Cloud) in the sidebar.")
+        else:
+            # Append User Message
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-        # Assistant Thinking & Retrieval
-        with st.chat_message("assistant"):
-            with st.spinner("Retrieving relevant context and synthesizing..."):
-                try:
-                    service = get_user_rag_service()
-                    
-                    # Convert conversation history
-                    history = []
-                    for i in range(0, len(st.session_state.messages) - 1, 2):
-                        if i + 1 < len(st.session_state.messages):
-                            history.append({
-                                "human": st.session_state.messages[i]["content"],
-                                "ai": st.session_state.messages[i+1]["content"]
-                            })
-                    
-                    doc_ids = list(st.session_state.indexed_docs.keys())
-                    result = service.query(
-                        question=prompt,
-                        document_ids=doc_ids,
-                        conversation_history=history,
-                    )
+            # Assistant Thinking & Retrieval
+            with st.chat_message("assistant"):
+                spinner_label = "Reasoning via local Ollama Qwen..." if is_ollama_mode else "Searching vectors and synthesizing via Gemini..."
+                with st.spinner(spinner_label):
+                    try:
+                        service = get_user_rag_service()
+                        
+                        # Convert conversation history
+                        history = []
+                        for i in range(0, len(st.session_state.messages) - 1, 2):
+                            if i + 1 < len(st.session_state.messages):
+                                history.append({
+                                    "human": st.session_state.messages[i]["content"],
+                                    "ai": st.session_state.messages[i+1]["content"]
+                                })
+                        
+                        doc_ids = list(st.session_state.indexed_docs.keys())
+                        result = service.query(
+                            question=prompt,
+                            document_ids=doc_ids,
+                            conversation_history=history,
+                            engine="ollama" if is_ollama_mode else "gemini",
+                            ollama_model=selected_ollama_model,
+                        )
 
-                    st.markdown(result.answer)
-                    
-                    sources_data = [
-                        {
-                            "filename": s.filename,
-                            "page": s.page,
-                            "content": s.content
-                        }
-                        for s in result.sources
-                    ]
+                        st.markdown(result.answer)
+                        
+                        sources_data = [
+                            {
+                                "filename": s.filename,
+                                "page": s.page,
+                                "content": s.content
+                            }
+                            for s in result.sources
+                        ]
 
-                    if sources_data:
-                        with st.expander(f"Referenced Sources ({len(sources_data)})", expanded=False):
-                            for i, src in enumerate(sources_data, 1):
-                                page_badge = f" · Page {src['page']}" if src.get("page") else ""
-                                st.markdown(f"""
-                                <div class="citation-card">
-                                    <span class="citation-badge">Source {i} — {src['filename']}{page_badge}</span>
-                                    <div style="font-size: 0.85rem; color: #475569; line-height: 1.45;">{src['content']}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                        if sources_data:
+                            with st.expander(f"Referenced Sources ({len(sources_data)})", expanded=False):
+                                for i, src in enumerate(sources_data, 1):
+                                    page_badge = f" · Page {src['page']}" if src.get("page") else ""
+                                    st.markdown(f"""
+                                    <div class="citation-card">
+                                        <span class="citation-badge">Source {i} — {src['filename']}{page_badge}</span>
+                                        <div style="font-size: 0.85rem; color: #475569; line-height: 1.45;">{src['content']}</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
 
-                    # Save to session history
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": result.answer,
-                        "sources": sources_data
-                    })
+                        # Save to session history
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": result.answer,
+                            "sources": sources_data
+                        })
 
-                except Exception as e:
-                    error_msg = f"An error occurred while processing your request: {e}"
-                    st.error(error_msg)
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": error_msg,
-                        "sources": []
-                    })
+                    except Exception as e:
+                        clean_error = str(e)
+                        if "Connection refused" in clean_error or "11434" in clean_error:
+                            clean_error = "Ollama connection lost. Please ensure 'ollama' is running in the background."
+                        elif "429" in clean_error:
+                            clean_error = "Gemini rate limit exceeded. Please wait a moment or switch to 'Ollama Qwen (Local)' in the sidebar for unlimited local queries."
+                        
+                        st.error(f"Error: {clean_error}")
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": f"An error occurred: {clean_error}",
+                            "sources": []
+                        })

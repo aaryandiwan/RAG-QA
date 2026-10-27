@@ -252,9 +252,11 @@ class RAGService:
         document_ids: Optional[List[str]] = None,
         conversation_history: Optional[List[dict]] = None,
         top_k: int = 5,
+        engine: str = "gemini",
+        ollama_model: str = "qwen2.5:3b",
     ) -> QueryResponse:
         """
-        Answer a question using RAG with direct retrieval + prompt approach.
+        Answer a question using RAG grounded via Gemini Cloud or local Ollama.
         """
         # 1. Embed the query
         query_vector = self._embed_text(question)
@@ -306,14 +308,23 @@ class RAGService:
                     history_parts.append(f"Assistant: {ai}")
             history_str = "\n".join(history_parts)
 
-        # 7. Build the prompt
-        prompt = self._build_prompt(question, context, history_str)
+        # 7. Generation via selected Engine (Gemini Cloud or Ollama Local)
+        if engine.lower() == "ollama":
+            from app.services.ollama_service import query_ollama
+            context_snippets = [doc["text"] for doc in retrieved_docs if doc.get("text")]
+            answer = query_ollama(
+                question=question,
+                context_chunks=context_snippets,
+                model=ollama_model,
+            )
+            model_used_name = f"ollama/{ollama_model}"
+        else:
+            prompt = self._build_prompt(question, context, history_str)
+            response = self.model.generate_content(prompt)
+            answer = response.text
+            model_used_name = settings.GEMINI_MODEL
 
-        # 8. Call Gemini
-        response = self.model.generate_content(prompt)
-        answer = response.text
-
-        # 9. Build source chunks for response
+        # 8. Build source chunks for response
         sources = []
         seen = set()
         for doc in retrieved_docs:
@@ -335,7 +346,7 @@ class RAGService:
             answer=answer,
             sources=sources,
             question=question,
-            model_used=settings.GEMINI_MODEL,
+            model_used=model_used_name,
         )
 
     def _build_prompt(self, question: str, context: str, history: str) -> str:

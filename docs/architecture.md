@@ -1,16 +1,16 @@
-# Architecture & Deployment Guide 🧠📄
+# Architecture & Deployment Guide
 
-## Pure Python System Architecture
+## System Architecture
 
-RAG-QA is a **100% Python** Retrieval-Augmented Generation (RAG) system powered by **Streamlit**, **LangChain**, **Google Gemini**, and **Pinecone Serverless**.
+RAG-QA is a pure Python Retrieval-Augmented Generation (RAG) system powered by Streamlit, LangChain, Pinecone Serverless, and a dual inference engine (Google Gemini Cloud + Ollama Local Qwen).
 
 ```
                    ┌─────────────────────────────────────────┐
                    │           Streamlit Web UI              │
                    │  (streamlit_app.py — Python 3.12)       │
-                   │  - Drag & Drop Document Uploader        │
+                   │  - Drag & Drop Document Ingestion       │
                    │  - BYOK (Bring Your Own Keys) Sidebar   │
-                   │  - Interactive Markdown Chat UI         │
+                   │  - Dual Engine Switch (Gemini / Ollama) │
                    │  - Source Attribution & Citations       │
                    └──────────────────┬──────────────────────┘
                                       │ In-Process Python Call
@@ -18,20 +18,19 @@ RAG-QA is a **100% Python** Retrieval-Augmented Generation (RAG) system powered 
                    │           RAG Service Core              │
                    │  (app/services/rag_service.py)          │
                    │                                         │
+                   │  - Document Parsing (PyPDF, docx)       │
                    │  - Chunking (RecursiveTextSplitter)     │
-                   │  - Document Parsing (PyPDF, python-docx)│
                    │  - Embedding Generation & Fallback      │
                    │  - Pinecone Vector Indexing & Search    │
-                   │  - Gemini Generative Response Stream    │
                    └──────────────────┬──────────────────────┘
                                       │
-              ┌───────────────────────┴───────────────────────┐
-              │                                               │
-    ┌─────────▼────────┐                            ┌─────────▼────────┐
-    │   Pinecone DB    │                            │  Google Gemini   │
-    │ (Serverless 3072)│                            │ - Embedding 2    │
-    │  AWS us-east-1   │                            │ - 3.5 Flash Lite │
-    └──────────────────┘                            └──────────────────┘
+              ┌───────────────────────┼───────────────────────┐
+              │                       │                       │
+    ┌─────────▼────────┐    ┌─────────▼────────┐    ┌─────────▼────────┐
+    │   Pinecone DB    │    │  Google Gemini   │    │   Local Ollama   │
+    │ (Serverless 3072)│    │ - Embedding 2    │    │ - Qwen 2.5       │
+    │  AWS us-east-1   │    │ - 3.5 Flash Lite │    │ - Offline & Free │
+    └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
 ---
@@ -69,15 +68,22 @@ Pinecone Query (top_k=5)         ← Cosine similarity match over document index
     ▼
 Context Assembly                 ← Top-K context chunks combined into prompt
     │
-    ▼
-Gemini 3.5 Flash Lite            ← Context-grounded synthesis with transparent citations
+    ├─────────────────────────────┐
+    ▼                             ▼
+Google Gemini 3.5 Flash       Local Ollama (Qwen 2.5)
+(Fast cloud generation)       (Zero limits, 100% private)
+    │                             │
+    └──────────────┬──────────────┘
+                   │
+                   ▼
+       Grounded Answer with Source Citations
 ```
 
 ---
 
 ## Deployment: Streamlit Community Cloud
 
-The project is natively deployed on **Streamlit Community Cloud**:
-- **Live URL:** [rag-application26.streamlit.app](https://rag-application26.streamlit.app)
-- **Deployment Process:** Direct 1-click connection to GitHub `main` branch.
-- **BYOK Architecture:** Users supply their own Gemini & Pinecone API keys in the sidebar. No server-side secrets are exposed or billed.
+The project is natively deployed on Streamlit Community Cloud:
+- Live URL: [rag-application26.streamlit.app](https://rag-application26.streamlit.app)
+- Deployment Process: Connected directly to GitHub main branch.
+- BYOK Architecture: Users supply their own Gemini & Pinecone API keys in the sidebar. No server-side secrets are exposed or billed.
