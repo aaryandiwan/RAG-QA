@@ -12,7 +12,7 @@ if backend_dir not in sys.path:
 
 # Page configuration
 st.set_page_config(
-    page_title="DocChat — RAG Document Q&A",
+    page_title="RAG-QA — Document Intelligence",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -199,12 +199,12 @@ with st.sidebar:
         st.rerun()
 
 # ── Main Chat Area ──────────────────────────────────────────────────
-st.markdown('<div class="main-title">DocChat 🧠📄</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">RAG-QA 🧠📄</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Intelligent RAG Document Question Answering powered by Google Gemini & Pinecone</div>', unsafe_allow_html=True)
 
 # If keys are missing, show prominent callout
 if not keys_ready:
-    st.info("👈 **Welcome to DocChat!** To get started, please enter your **Gemini API Key** and **Pinecone API Key** in the sidebar. Your keys are private to your session and never stored.")
+    st.info("👈 **Welcome to RAG-QA!** To get started, please enter your **Gemini API Key** and **Pinecone API Key** in the sidebar. Your keys are private to your session and never stored.")
 
 # Display Chat Messages
 for msg in st.session_state.messages:

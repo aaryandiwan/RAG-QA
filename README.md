@@ -1,4 +1,4 @@
-# DocChat — RAG Document Q&A 🧠📄
+# RAG-QA — Document Intelligence 🧠📄
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rag-application26.streamlit.app)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)

@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo   Starting DocChat (100%% Python RAG with Streamlit)
+echo   Starting RAG-QA (100%% Python RAG with Streamlit)
 echo ========================================================
 echo.
 

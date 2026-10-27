@@ -2,7 +2,7 @@
 
 ## Pure Python System Architecture
 
-DocChat is a **100% Python** Retrieval-Augmented Generation (RAG) system powered by **Streamlit**, **LangChain**, **Google Gemini**, and **Pinecone Serverless**.
+RAG-QA is a **100% Python** Retrieval-Augmented Generation (RAG) system powered by **Streamlit**, **LangChain**, **Google Gemini**, and **Pinecone Serverless**.
 
 ```
                    ┌─────────────────────────────────────────┐
