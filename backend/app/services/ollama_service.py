@@ -40,9 +40,10 @@ def query_ollama(
     context_text = "\n\n---\n\n".join(context_chunks)
 
     prompt = (
-        "You are an intelligent document question-answering assistant. "
-        "Answer the user's question accurately using ONLY the provided document context below. "
-        "If the answer cannot be found in the context, clearly state that the provided documents do not contain this information.\n\n"
+        "You are a helpful and thorough document question-answering assistant. "
+        "Answer the user's question completely, accurately, and comprehensively based on the provided document context below. "
+        "If the user asks for objectives, scope, features, lists, or steps, make sure to include ALL items and points found in the context rather than stopping early or providing only a partial list. "
+        "Present your answer cleanly formatted with markdown (numbered lists or bullet points).\n\n"
         f"Context from documents:\n{context_text}\n\n"
         f"Question: {question}\n\n"
         "Answer:"
@@ -55,6 +56,7 @@ def query_ollama(
         "options": {
             "temperature": 0.2,
             "top_p": 0.9,
+            "num_predict": 1200,
         }
     }).encode("utf-8")
 

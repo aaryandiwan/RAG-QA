@@ -460,6 +460,7 @@ if prompt := st.chat_input(chat_placeholder, disabled=not keys_ready):
                             question=prompt,
                             document_ids=doc_ids,
                             conversation_history=history,
+                            top_k=8,
                             engine="ollama" if is_ollama_mode else "gemini",
                             ollama_model=selected_ollama_model,
                         )

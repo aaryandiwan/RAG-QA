@@ -251,7 +251,7 @@ class RAGService:
         question: str,
         document_ids: Optional[List[str]] = None,
         conversation_history: Optional[List[dict]] = None,
-        top_k: int = 5,
+        top_k: int = 8,
         engine: str = "gemini",
         ollama_model: str = "qwen2.5:3b",
     ) -> QueryResponse:
@@ -352,10 +352,11 @@ class RAGService:
     def _build_prompt(self, question: str, context: str, history: str) -> str:
         """Build the RAG prompt for Gemini."""
         parts = [
-            "You are a helpful document Q&A assistant. Answer the user's question "
-            "based ONLY on the provided document context below. If the context does "
-            "not contain enough information to answer, say so clearly. Always cite "
-            "which source(s) you used.",
+            "You are a helpful and thorough document Q&A assistant. "
+            "Answer the user's question completely and comprehensively based on the provided document context below. "
+            "If the user asks for objectives, scope, features, lists, or steps, make sure to include ALL items and details found in the context rather than truncating or providing only a partial subset. "
+            "Format your answer cleanly with markdown (bullet points or numbered lists where appropriate). "
+            "If the context does not contain enough information to answer, state so clearly.",
             "",
             "## Document Context",
             context,
