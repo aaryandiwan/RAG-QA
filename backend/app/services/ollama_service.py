@@ -40,10 +40,14 @@ def query_ollama(
     context_text = "\n\n---\n\n".join(context_chunks)
 
     prompt = (
-        "You are a helpful and thorough document question-answering assistant. "
-        "Answer the user's question completely, accurately, and comprehensively based on the provided document context below. "
-        "If the user asks for objectives, scope, features, lists, or steps, make sure to include ALL items and points found in the context rather than stopping early or providing only a partial list. "
-        "Present your answer cleanly formatted with markdown (numbered lists or bullet points).\n\n"
+        "You are an expert document analysis and question-answering assistant. "
+        "Answer the user's question completely, accurately, and thoroughly using the provided document context below.\n\n"
+        "CRITICAL INSTRUCTIONS FOR COMPLETENESS:\n"
+        "- When asked to summarize a topic, or describe the scope, objectives, methodology, limitations, architecture, or any section: "
+        "provide an EXHAUSTIVE and DETAILED answer containing ALL points, categories, subsections, bullet items, and techniques present in the context.\n"
+        "- DO NOT summarize into only 2 or 3 items if more points exist in the context. Never truncate, omit sections, or stop early.\n"
+        "- Present your answer clearly with structured markdown headers, numbered lists, and bullet points reflecting the full document hierarchy.\n"
+        "- If the context does not contain enough information to answer, state so clearly.\n\n"
         f"Context from documents:\n{context_text}\n\n"
         f"Question: {question}\n\n"
         "Answer:"

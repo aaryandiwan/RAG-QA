@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     PINECONE_ENV: str = "us-east-1"
     PINECONE_INDEX: str = "rag-qa-index"
 
-    # Chunking (1200 chars keeps full lists, sections, and paragraphs intact)
-    CHUNK_SIZE: int = 1200
-    CHUNK_OVERLAP: int = 150
+    # Chunking (1500 chars keeps full multi-page lists, sections, and paragraphs intact)
+    CHUNK_SIZE: int = 1500
+    CHUNK_OVERLAP: int = 250
     TOP_K_RESULTS: int = 8
 
     # Embedding dimension (gemini-embedding-001 = 3072)

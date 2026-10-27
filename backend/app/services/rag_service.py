@@ -214,6 +214,13 @@ class RAGService:
                 metadata = chunk.metadata.copy()
                 metadata["text"] = chunk.page_content
                 metadata["document_id"] = document_id
+                metadata["chunk_index"] = idx
+
+                # Extract accurate page number from [Page X] header if present
+                import re
+                page_matches = re.findall(r"\[Page\s+(\d+)\]", chunk.page_content)
+                if page_matches:
+                    metadata["page"] = int(page_matches[0])
 
                 vectors.append({
                     "id": chunk_id,
@@ -274,17 +281,57 @@ class RAGService:
             filter=search_filter,
         )
 
-        # 4. Extract retrieved chunks
+        # 4. Extract retrieved chunks with neighbor window expansion
         retrieved_docs = []
+        seen_ids = set()
+        continuation_ids = []
+
         for match in results.get("matches", []):
+            chunk_id = match.get("id", "")
+            seen_ids.add(chunk_id)
             metadata = match.get("metadata", {})
             retrieved_docs.append({
+                "id": chunk_id,
                 "text": metadata.get("text", ""),
                 "filename": metadata.get("filename", ""),
                 "page": metadata.get("page"),
                 "document_id": metadata.get("document_id", ""),
+                "chunk_index": metadata.get("chunk_index", 0),
                 "score": match.get("score", 0.0),
             })
+
+            # For top scoring chunks, schedule the immediate next sequential chunk (#idx + 1)
+            # This guarantees that topics continuing onto the next page/chunk are never cut in half!
+            if "#" in chunk_id:
+                doc_prefix, idx_str = chunk_id.split("#", 1)
+                if idx_str.isdigit():
+                    next_chunk_id = f"{doc_prefix}#{int(idx_str) + 1}"
+                    if next_chunk_id not in seen_ids:
+                        continuation_ids.append(next_chunk_id)
+
+        # Fetch continuation neighbor chunks
+        if continuation_ids:
+            try:
+                fetch_res = self.index.fetch(ids=continuation_ids[:4])
+                for cid, vdata in fetch_res.get("vectors", {}).items():
+                    c_meta = vdata.get("metadata", {})
+                    if c_meta and cid not in seen_ids:
+                        seen_ids.add(cid)
+                        idx_val = int(cid.split("#")[-1]) if "#" in cid and cid.split("#")[-1].isdigit() else 0
+                        retrieved_docs.append({
+                            "id": cid,
+                            "text": c_meta.get("text", ""),
+                            "filename": c_meta.get("filename", ""),
+                            "page": c_meta.get("page"),
+                            "document_id": c_meta.get("document_id", ""),
+                            "chunk_index": idx_val,
+                            "score": 0.8,
+                        })
+            except Exception as e:
+                logger.debug(f"Optional neighbor chunk expansion skipped: {e}")
+
+        # Sort all chunks by document and chunk index so the text flows in natural reading order
+        retrieved_docs.sort(key=lambda d: (d.get("document_id", ""), d.get("chunk_index", 0)))
 
         # 5. Build context string from retrieved chunks
         context_parts = []
@@ -352,11 +399,14 @@ class RAGService:
     def _build_prompt(self, question: str, context: str, history: str) -> str:
         """Build the RAG prompt for Gemini."""
         parts = [
-            "You are a helpful and thorough document Q&A assistant. "
-            "Answer the user's question completely and comprehensively based on the provided document context below. "
-            "If the user asks for objectives, scope, features, lists, or steps, make sure to include ALL items and details found in the context rather than truncating or providing only a partial subset. "
-            "Format your answer cleanly with markdown (bullet points or numbered lists where appropriate). "
-            "If the context does not contain enough information to answer, state so clearly.",
+            "You are an expert document analysis and question-answering assistant. "
+            "Answer the user's question completely, accurately, and thoroughly using ONLY the provided document context below.\n\n"
+            "CRITICAL INSTRUCTIONS FOR COMPLETENESS:\n"
+            "- When asked to summarize a topic, or describe the scope, objectives, methodology, limitations, architecture, or any section: "
+            "provide an EXHAUSTIVE and DETAILED answer containing ALL points, categories, subsections, bullet items, and techniques present in the context.\n"
+            "- DO NOT summarize into only 2 or 3 items if more points exist in the context. Never truncate, omit sections, or stop early.\n"
+            "- Present your answer clearly with structured markdown headers, numbered lists, and bullet points reflecting the full document hierarchy.\n"
+            "- If the context does not contain enough information to answer, state so clearly.",
             "",
             "## Document Context",
             context,

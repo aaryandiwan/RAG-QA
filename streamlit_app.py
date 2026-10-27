@@ -200,20 +200,19 @@ ollama_online, installed_ollama_models = check_ollama_status()
 
 # ── Sidebar: Configuration ───────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### Inference Engine")
-    
-    engine_choice = st.radio(
-        "Select Model Provider",
-        options=["Google Gemini (Cloud)", "Ollama Qwen (Local)"],
-        index=0,
-        help="Switch between cloud-based Gemini API or offline local open-source Ollama models.",
-        label_visibility="collapsed"
-    )
-
     selected_ollama_model = "qwen2.5:3b"
 
-    if engine_choice == "Ollama Qwen (Local)":
-        if ollama_online:
+    if ollama_online:
+        st.markdown("### Inference Engine")
+        engine_choice = st.radio(
+            "Select Model Provider",
+            options=["Google Gemini (Cloud)", "Ollama Qwen (Local)"],
+            index=0,
+            help="Switch between cloud-based Gemini API or offline local open-source Ollama models.",
+            label_visibility="collapsed"
+        )
+
+        if engine_choice == "Ollama Qwen (Local)":
             st.success("Connected to local Ollama (localhost:11434)")
             if installed_ollama_models:
                 selected_ollama_model = st.selectbox(
@@ -223,18 +222,10 @@ with st.sidebar:
                     help="Detected models currently installed in your local Ollama library."
                 )
             st.caption("Offline inference active. No API rate limits or usage billing.")
-        else:
-            st.warning("Local Ollama service was not detected at http://localhost:11434.")
-            st.markdown("""
-            <div style="font-size:0.8rem; color:#64748B; line-height:1.45; margin-bottom:8px;">
-                To run open-source models locally:<br/>
-                1. Install Ollama from <a href="https://ollama.com" target="_blank" style="color:#2563EB;">ollama.com</a><br/>
-                2. Run <code>ollama run qwen2.5:3b</code> in your terminal<br/>
-                Or switch to <strong>Google Gemini (Cloud)</strong> above.
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("---")
+        st.markdown("---")
+    else:
+        # When running on Cloud or without local daemon, cleanly default to Gemini without warnings
+        engine_choice = "Google Gemini (Cloud)"
     st.markdown("### Vector Storage & API Credentials")
     st.caption("Credentials remain private to your session memory and are never persisted to disk.")
 

@@ -30,17 +30,23 @@ def _parse_pdf(file_path: str, filename: str) -> List[Document]:
     from pypdf import PdfReader
 
     reader = PdfReader(file_path)
-    documents = []
+    full_text_blocks = []
 
     for page_num, page in enumerate(reader.pages, start=1):
         text = page.extract_text()
         if text and text.strip():
-            documents.append(Document(
-                page_content=text.strip(),
-                metadata={"filename": filename, "page": page_num, "source": filename}
-            ))
+            full_text_blocks.append(f"\n[Page {page_num}]\n{text.strip()}")
 
-    logger.info(f"Parsed PDF '{filename}': {len(documents)} pages")
+    if not full_text_blocks:
+        return []
+
+    full_document_text = "\n\n".join(full_text_blocks)
+    documents = [Document(
+        page_content=full_document_text,
+        metadata={"filename": filename, "source": filename, "page": 1}
+    )]
+
+    logger.info(f"Parsed PDF '{filename}': {len(reader.pages)} pages as unified continuous document")
     return documents
 
 

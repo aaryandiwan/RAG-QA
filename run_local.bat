@@ -1,22 +1,17 @@
 @echo off
 echo ========================================================
-echo   Starting RAG-QA (100%% Python RAG with Streamlit)
+echo   Starting RAG-QA (Streamlit)
 echo ========================================================
 echo.
 
 cd /d "%~dp0"
-
 set PYTHONPATH=backend;.
 
-if exist "backend\.venv\Scripts\python.exe" (
-    echo [INFO] Using virtual environment (backend\.venv)...
-    "backend\.venv\Scripts\python.exe" -m streamlit run streamlit_app.py
-) else if exist ".venv\Scripts\python.exe" (
-    echo [INFO] Using virtual environment (.venv)...
-    ".venv\Scripts\python.exe" -m streamlit run streamlit_app.py
-) else (
-    echo [INFO] Launching Streamlit via system python...
-    python -m streamlit run streamlit_app.py
-)
+set "PYTHON_EXE=backend\.venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" set "PYTHON_EXE=.venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" set "PYTHON_EXE=python"
+
+echo [INFO] Starting application...
+"%PYTHON_EXE%" -m streamlit run streamlit_app.py
 
 pause
