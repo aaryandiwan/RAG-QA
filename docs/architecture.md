@@ -1,56 +1,59 @@
-# Architecture & AWS Deployment Guide
+# Architecture & Deployment Guide 🧠📄
 
-## System Architecture
+## Pure Python System Architecture
+
+DocChat is a **100% Python** Retrieval-Augmented Generation (RAG) system powered by **Streamlit**, **LangChain**, **Google Gemini**, and **Pinecone Serverless**.
 
 ```
-                    ┌─────────────────────────────────────────┐
-                    │             React Frontend               │
-                    │  (Vite + Tailwind + React Dropzone)     │
-                    └──────────────────┬──────────────────────┘
-                                       │ HTTP / REST
-                    ┌──────────────────▼──────────────────────┐
-                    │           FastAPI Backend                │
-                    │                                         │
-                    │  ┌──────────────┐  ┌─────────────────┐  │
-                    │  │  /documents  │  │    /query        │  │
-                    │  │  (upload,    │  │  (RAG pipeline)  │  │
-                    │  │   delete)    │  │                  │  │
-                    │  └──────┬───────┘  └────────┬────────┘  │
-                    │         │                   │           │
-                    │  ┌──────▼───────────────────▼────────┐  │
-                    │  │          RAGService                │  │
-                    │  │  - Chunking (RecursiveTextSplitter)│  │
-                    │  │  - Embedding (OpenAI text-emb-3)   │  │
-                    │  │  - Retrieval (Pinecone top-K)      │  │
-                    │  │  - Generation (GPT-4o)             │  │
-                    │  └──────────┬────────────────────────┘  │
-                    └─────────────┼──────────────────────────┘
-                                  │
-              ┌───────────────────┼───────────────────┐
-              │                   │                   │
-    ┌─────────▼────────┐  ┌───────▼────────┐  ┌──────▼──────┐
-    │   Pinecone DB     │  │  OpenAI API    │  │   AWS S3    │
-    │ (Vector Storage)  │  │ (Embed + Chat) │  │ (Doc Store) │
-    └──────────────────┘  └────────────────┘  └─────────────┘
+                   ┌─────────────────────────────────────────┐
+                   │           Streamlit Web UI              │
+                   │  (streamlit_app.py — Python 3.12)       │
+                   │  - Drag & Drop Document Uploader        │
+                   │  - BYOK (Bring Your Own Keys) Sidebar   │
+                   │  - Interactive Markdown Chat UI         │
+                   │  - Source Attribution & Citations       │
+                   └──────────────────┬──────────────────────┘
+                                      │ In-Process Python Call
+                   ┌──────────────────▼──────────────────────┐
+                   │           RAG Service Core              │
+                   │  (app/services/rag_service.py)          │
+                   │                                         │
+                   │  - Chunking (RecursiveTextSplitter)     │
+                   │  - Document Parsing (PyPDF, python-docx)│
+                   │  - Embedding Generation & Fallback      │
+                   │  - Pinecone Vector Indexing & Search    │
+                   │  - Gemini Generative Response Stream    │
+                   └──────────────────┬──────────────────────┘
+                                      │
+              ┌───────────────────────┴───────────────────────┐
+              │                                               │
+    ┌─────────▼────────┐                            ┌─────────▼────────┐
+    │   Pinecone DB    │                            │  Google Gemini   │
+    │ (Serverless 3072)│                            │ - Embedding 2    │
+    │  AWS us-east-1   │                            │ - 3.5 Flash Lite │
+    └──────────────────┘                            └──────────────────┘
 ```
+
+---
 
 ## RAG Pipeline Detail
 
 ### Step 1: Document Indexing
 ```
-File Upload
+File Upload (PDF / DOCX / TXT / MD)
     │
     ▼
-parse_document()          ← Extracts text per page (PDF) or full doc (DOCX/TXT)
+parse_document()                 ← Extracts structured text per page or section
     │
     ▼
-RecursiveCharacterTextSplitter  ← chunk_size=500, overlap=50
+RecursiveCharacterTextSplitter   ← chunk_size=500, overlap=50
     │
     ▼
-OpenAI text-embedding-3-small   ← 1536-dim vector per chunk
+Google Gemini Embedding          ← 3072-dim vector per chunk
+(gemini-embedding-2 / fallback)     Batch-processed with 429 exponential backoff
     │
     ▼
-Pinecone upsert                 ← stored with metadata: {document_id, filename, page}
+Pinecone Upsert                  ← Stored with metadata: {document_id, filename, page, text}
 ```
 
 ### Step 2: Query Answering
@@ -58,69 +61,23 @@ Pinecone upsert                 ← stored with metadata: {document_id, filename
 User Question
     │
     ▼
-OpenAI text-embedding-3-small   ← embed the question
+Embed Question                   ← Generates 3072-dim query vector
     │
     ▼
-Pinecone similarity search      ← top-K=5 most similar chunks (cosine)
+Pinecone Query (top_k=5)         ← Cosine similarity match over document index
     │
     ▼
-ConversationalRetrievalChain    ← chunks + question + history → GPT-4o
+Context Assembly                 ← Top-K context chunks combined into prompt
     │
     ▼
-Answer + Source Citations       ← returned to frontend
+Gemini 3.5 Flash Lite            ← Context-grounded synthesis with transparent citations
 ```
 
 ---
 
-## AWS Deployment
+## Deployment: Streamlit Community Cloud
 
-### Prerequisites
-- AWS CLI configured
-- Docker installed
-- ECR, ECS, and S3 permissions
-
-### 1. Push images to ECR
-
-```bash
-# Authenticate
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
-
-# Build and push backend
-docker build -f docker/Dockerfile.backend -t rag-qa-backend ./backend
-docker tag rag-qa-backend:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/rag-qa-backend:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/rag-qa-backend:latest
-
-# Build and push frontend
-docker build -f docker/Dockerfile.frontend -t rag-qa-frontend .
-docker tag rag-qa-frontend:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/rag-qa-frontend:latest
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/rag-qa-frontend:latest
-```
-
-### 2. ECS Fargate Setup
-- Create an ECS cluster
-- Create task definitions for backend and frontend using the ECR images
-- Set environment variables (OPENAI_API_KEY, PINECONE_API_KEY etc.) via AWS Secrets Manager
-- Create services with desired count = 1 (scale up as needed)
-- Attach an Application Load Balancer
-
-### 3. Cheapest Free Tier Alternative (for students)
-Instead of ECS, use:
-- **Backend**: [Render.com](https://render.com) free tier — deploy as a web service
-- **Frontend**: [Vercel](https://vercel.com) free tier — `npm run build` + deploy
-- **Pinecone**: Free starter plan (1 index, 100K vectors)
-- **OpenAI**: Pay per use (~$0.01 per query)
-
----
-
-## Environment Variables Reference
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | `sk-...` |
-| `PINECONE_API_KEY` | Pinecone API key | `abc123...` |
-| `PINECONE_ENV` | Pinecone region | `us-east-1` |
-| `PINECONE_INDEX` | Index name | `rag-qa-index` |
-| `CHUNK_SIZE` | Characters per chunk | `500` |
-| `CHUNK_OVERLAP` | Overlap between chunks | `50` |
-| `MAX_FILE_SIZE_MB` | Max upload size | `20` |
+The project is natively deployed on **Streamlit Community Cloud**:
+- **Live URL:** [rag-application26.streamlit.app](https://rag-application26.streamlit.app)
+- **Deployment Process:** Direct 1-click connection to GitHub `main` branch.
+- **BYOK Architecture:** Users supply their own Gemini & Pinecone API keys in the sidebar. No server-side secrets are exposed or billed.

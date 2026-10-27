@@ -1,16 +1,24 @@
 @echo off
 echo ========================================================
-echo   Starting DocChat Localhost (FastAPI + React Vite)
+echo   Starting DocChat (100%% Python RAG with Streamlit)
 echo ========================================================
+echo.
 
-start "DocChat Backend (FastAPI)" cmd /k "cd /d d:\00-PROJECTS\rag-qa\backend && .venv\Scripts\python.exe -m uvicorn main:app --reload --port 8082"
+cd /d "%~dp0"
 
-timeout /t 2 >nul
+if exist "backend\.venv\Scripts\activate.bat" (
+    echo [INFO] Activating virtual environment (backend\.venv)...
+    call "backend\.venv\Scripts\activate.bat"
+) else if exist ".venv\Scripts\activate.bat" (
+    echo [INFO] Activating virtual environment (.venv)...
+    call ".venv\Scripts\activate.bat"
+) else (
+    echo [WARNING] Virtual environment not found. Using system Python...
+)
 
-start "DocChat Frontend (React)" cmd /k "cd /d d:\00-PROJECTS\rag-qa\frontend && npm run dev"
+set PYTHONPATH=backend;.
 
-timeout /t 2 >nul
+echo [INFO] Launching Streamlit application on http://localhost:8501...
+streamlit run streamlit_app.py
 
-start http://localhost:5173
-
-echo Done! Servers are running.
+pause
